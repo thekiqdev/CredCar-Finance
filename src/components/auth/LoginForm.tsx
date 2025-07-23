@@ -53,7 +53,7 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
     <Card className="w-full max-w-md mx-auto bg-white">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center">
-          CrediCar
+          CredCar
         </CardTitle>
         <CardDescription className="text-center">
           Entre com suas credenciais para acessar o sistema
