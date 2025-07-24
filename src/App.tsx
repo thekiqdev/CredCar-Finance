@@ -4,6 +4,8 @@ import Home from "./components/home";
 import RepresentativeProfile from "./components/dashboard/RepresentativeProfile";
 import AdminDashboard from "./components/dashboard/AdminDashboard";
 import RepresentativeDashboard from "./components/dashboard/RepresentativeDashboard";
+import PublicRegistration from "./components/auth/PublicRegistration";
+import DocumentUpload from "./components/auth/DocumentUpload";
 import routes from "tempo-routes";
 
 function App() {
@@ -14,6 +16,8 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/admindashboard" element={<AdminDashboard />} />
           <Route path="/representante" element={<RepresentativeDashboard />} />
+          <Route path="/cadastro" element={<PublicRegistration />} />
+          <Route path="/documentos" element={<DocumentUpload />} />
           <Route
             path="/representative/:id"
             element={<RepresentativeProfile />}

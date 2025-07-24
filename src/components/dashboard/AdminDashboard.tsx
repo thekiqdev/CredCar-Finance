@@ -260,6 +260,73 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       contracts: 4,
     },
   ]);
+  const [isRepresentativeModalOpen, setIsRepresentativeModalOpen] =
+    useState(false);
+  const [selectedRepresentativeForModal, setSelectedRepresentativeForModal] =
+    useState(null);
+  const [pendingRegistrations, setPendingRegistrations] = useState([
+    {
+      id: 1,
+      name: "João Santos",
+      email: "joao.santos@email.com",
+      phone: "(11) 99999-0001",
+      cnpj: "12.345.678/0001-90",
+      razaoSocial: "Santos Veículos LTDA",
+      pontoVenda: "São Paulo - Centro",
+      requestDate: "2023-07-15",
+      status: "Pendente de Aprovação",
+    },
+    {
+      id: 2,
+      name: "Maria Oliveira",
+      email: "maria.oliveira@email.com",
+      phone: "(11) 99999-0002",
+      cnpj: "98.765.432/0001-10",
+      razaoSocial: "Oliveira Automóveis ME",
+      pontoVenda: "Rio de Janeiro - Zona Sul",
+      requestDate: "2023-07-14",
+      status: "Pendente de Aprovação",
+    },
+    {
+      id: 3,
+      name: "Carlos Pereira",
+      email: "carlos.pereira@email.com",
+      phone: "(11) 99999-0003",
+      cnpj: "11.222.333/0001-44",
+      razaoSocial: "Pereira Veículos EIRELI",
+      pontoVenda: "Belo Horizonte - Centro",
+      requestDate: "2023-07-13",
+      status: "Pendente de Aprovação",
+    },
+  ]);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [isRejectionDialogOpen, setIsRejectionDialogOpen] = useState(false);
+  const [selectedPendingRep, setSelectedPendingRep] = useState(null);
+  const [internalUsers, setInternalUsers] = useState([
+    {
+      id: 1,
+      name: "Admin Principal",
+      email: "admin@credicar.com",
+      role: "Administrador",
+      status: "Ativo",
+      createdAt: "2023-01-15",
+    },
+    {
+      id: 2,
+      name: "Suporte Técnico",
+      email: "suporte@credicar.com",
+      role: "Suporte",
+      status: "Ativo",
+      createdAt: "2023-03-20",
+    },
+  ]);
+  const [isNewUserDialogOpen, setIsNewUserDialogOpen] = useState(false);
+  const [newInternalUser, setNewInternalUser] = useState({
+    name: "",
+    email: "",
+    role: "Suporte",
+    password: "",
+  });
 
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState({
@@ -643,21 +710,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Quick Actions */}
       <div className="mb-6">
         <h2 className="text-lg font-semibold mb-4">Ações Rápidas</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Button className="h-auto py-4 flex flex-col items-center justify-center gap-2">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Button
+            className="h-auto py-4 flex flex-col items-center justify-center gap-2"
+            onClick={() => setActiveSection("representatives")}
+          >
             <PlusCircle className="h-6 w-6" />
             <span>Novo Representante</span>
           </Button>
           <Button
             className="h-auto py-4 flex flex-col items-center justify-center gap-2"
             variant="outline"
+            onClick={() => setActiveSection("contracts")}
           >
             <FileText className="h-6 w-6" />
-            <span>Gerar Relatório</span>
+            <span>Contratos</span>
           </Button>
           <Button
             className="h-auto py-4 flex flex-col items-center justify-center gap-2"
             variant="outline"
+            onClick={() => setActiveSection("settings")}
           >
             <Settings className="h-6 w-6" />
             <span>Configurações</span>
@@ -704,6 +776,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id: "PV-2023-001",
                     client: "João Silva",
                     rep: "Carlos Oliveira",
+                    repId: 1,
                     value: "R$ 45.000",
                     status: "Aprovado",
                   },
@@ -711,6 +784,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id: "PV-2023-002",
                     client: "Maria Santos",
                     rep: "Ana Pereira",
+                    repId: 2,
                     value: "R$ 38.500",
                     status: "Pendente",
                   },
@@ -718,6 +792,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id: "PV-2023-003",
                     client: "Pedro Costa",
                     rep: "Carlos Oliveira",
+                    repId: 1,
                     value: "R$ 52.000",
                     status: "Aprovado",
                   },
@@ -725,6 +800,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id: "PV-2023-004",
                     client: "Lucia Ferreira",
                     rep: "Marcos Souza",
+                    repId: 3,
                     value: "R$ 41.200",
                     status: "Em análise",
                   },
@@ -732,30 +808,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     id: "PV-2023-005",
                     client: "Roberto Alves",
                     rep: "Ana Pereira",
+                    repId: 2,
                     value: "R$ 36.800",
                     status: "Pendente",
                   },
-                ].map((contract) => (
-                  <TableRow key={contract.id}>
-                    <TableCell className="font-medium">{contract.id}</TableCell>
-                    <TableCell>{contract.client}</TableCell>
-                    <TableCell>{contract.rep}</TableCell>
-                    <TableCell>{contract.value}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          contract.status === "Aprovado"
-                            ? "default"
-                            : contract.status === "Pendente"
-                              ? "outline"
-                              : "secondary"
-                        }
-                      >
-                        {contract.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                ].map((contract) => {
+                  const representative = representatives.find(
+                    (r) => r.id === contract.repId,
+                  );
+                  return (
+                    <TableRow key={contract.id}>
+                      <TableCell className="font-medium">
+                        {contract.id}
+                      </TableCell>
+                      <TableCell>{contract.client}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto font-normal text-blue-600 hover:text-blue-800"
+                          onClick={() => {
+                            setSelectedRepresentativeForModal(representative);
+                            setIsRepresentativeModalOpen(true);
+                          }}
+                        >
+                          {contract.rep}
+                        </Button>
+                      </TableCell>
+                      <TableCell>{contract.value}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            contract.status === "Aprovado"
+                              ? "default"
+                              : contract.status === "Pendente"
+                                ? "outline"
+                                : "secondary"
+                          }
+                        >
+                          {contract.status}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -887,6 +982,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <Settings className="mr-2 h-4 w-4" />
               Configurações
+            </Button>
+            <Button
+              variant={activeSection === "collaborators" ? "default" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => setActiveSection("collaborators")}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Colaboradores
             </Button>
           </div>
         </nav>
@@ -1562,6 +1665,135 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </CardContent>
               </Card>
 
+              {/* Pending Registration Requests */}
+              {pendingRegistrations.length > 0 && (
+                <Card className="mt-6">
+                  <CardHeader>
+                    <CardTitle>Solicitações de Cadastro Pendentes</CardTitle>
+                    <CardDescription>
+                      {pendingRegistrations.length} solicitações aguardando
+                      aprovação
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {pendingRegistrations.map((request) => (
+                        <div
+                          key={request.id}
+                          className="flex items-center justify-between p-4 border rounded-lg bg-yellow-50 border-yellow-200"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <h4 className="font-medium">{request.name}</h4>
+                              <Badge
+                                variant="outline"
+                                className="bg-yellow-100 text-yellow-800"
+                              >
+                                {request.status}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <p className="text-muted-foreground">Email</p>
+                                <p className="font-medium">{request.email}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">
+                                  Telefone
+                                </p>
+                                <p className="font-medium">{request.phone}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">CNPJ</p>
+                                <p className="font-medium">{request.cnpj}</p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">
+                                  Razão Social
+                                </p>
+                                <p className="font-medium">
+                                  {request.razaoSocial}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">
+                                  Ponto de Venda
+                                </p>
+                                <p className="font-medium">
+                                  {request.pontoVenda}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground">
+                                  Data da Solicitação
+                                </p>
+                                <p className="font-medium">
+                                  {new Date(
+                                    request.requestDate,
+                                  ).toLocaleDateString("pt-BR")}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 ml-4">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                // Approve registration
+                                const newRep = {
+                                  id: nextRepresentativeId,
+                                  name: request.name,
+                                  email: request.email,
+                                  phone: request.phone,
+                                  commissionTable: "A",
+                                  status: "Ativo",
+                                  totalSales: "R$ 0",
+                                  contractsCount: 0,
+                                  joinDate: new Date().toLocaleDateString(
+                                    "pt-BR",
+                                  ),
+                                  cnpj: request.cnpj,
+                                  razaoSocial: request.razaoSocial,
+                                  pontoVenda: request.pontoVenda,
+                                };
+
+                                // Add to representatives list
+                                representatives.push(newRep);
+                                setNextRepresentativeId(
+                                  nextRepresentativeId + 1,
+                                );
+
+                                // Remove from pending
+                                setPendingRegistrations((prev) =>
+                                  prev.filter((p) => p.id !== request.id),
+                                );
+
+                                console.log("Registration approved:", newRep);
+                              }}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              Aprovar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                setSelectedPendingRep(request);
+                                setIsRejectionDialogOpen(true);
+                              }}
+                            >
+                              <XCircle className="mr-1 h-3 w-3" />
+                              Reprovar
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Representatives Stats */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
                 <Card>
@@ -1615,14 +1847,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium">
-                      Novos Este Mês
+                      Pendentes de Aprovação
                     </CardTitle>
-                    <PlusCircle className="h-4 w-4 text-muted-foreground" />
+                    <Clock className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">2</div>
+                    <div className="text-2xl font-bold">
+                      {pendingRegistrations.length}
+                    </div>
                     <p className="text-xs text-muted-foreground">
-                      Representantes cadastrados
+                      Solicitações aguardando
                     </p>
                   </CardContent>
                 </Card>
@@ -2892,8 +3126,418 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </Dialog>
             </>
           )}
+
+          {activeSection === "collaborators" && (
+            <>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Colaboradores
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Gerencie usuários internos do sistema.
+                  </p>
+                </div>
+                <Dialog
+                  open={isNewUserDialogOpen}
+                  onOpenChange={setIsNewUserDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button>
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Novo Usuário
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
+                      <DialogDescription>
+                        Crie um novo usuário interno do sistema.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="userName" className="text-right">
+                          Nome
+                        </Label>
+                        <Input
+                          id="userName"
+                          value={newInternalUser.name}
+                          onChange={(e) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              name: e.target.value,
+                            })
+                          }
+                          className="col-span-3"
+                          placeholder="Nome completo"
+                        />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="userEmail" className="text-right">
+                          Email
+                        </Label>
+                        <Input
+                          id="userEmail"
+                          type="email"
+                          value={newInternalUser.email}
+                          onChange={(e) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              email: e.target.value,
+                            })
+                          }
+                          className="col-span-3"
+                          placeholder="email@credicar.com"
+                        />
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="userRole" className="text-right">
+                          Função
+                        </Label>
+                        <Select
+                          value={newInternalUser.role}
+                          onValueChange={(value) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              role: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="col-span-3">
+                            <SelectValue placeholder="Selecione a função" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Administrador">
+                              Administrador
+                            </SelectItem>
+                            <SelectItem value="Suporte">Suporte</SelectItem>
+                            <SelectItem value="Financeiro">
+                              Financeiro
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="userPassword" className="text-right">
+                          Senha
+                        </Label>
+                        <div className="col-span-3 flex gap-2">
+                          <Input
+                            id="userPassword"
+                            type="text"
+                            value={newInternalUser.password}
+                            onChange={(e) =>
+                              setNewInternalUser({
+                                ...newInternalUser,
+                                password: e.target.value,
+                              })
+                            }
+                            className="flex-1"
+                            placeholder="Digite ou gere uma senha"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              const chars =
+                                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+                              let password = "";
+                              for (let i = 0; i < 12; i++) {
+                                password += chars.charAt(
+                                  Math.floor(Math.random() * chars.length),
+                                );
+                              }
+                              setNewInternalUser({
+                                ...newInternalUser,
+                                password,
+                              });
+                            }}
+                          >
+                            Gerar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        type="submit"
+                        onClick={() => {
+                          const newUser = {
+                            id: internalUsers.length + 1,
+                            name: newInternalUser.name,
+                            email: newInternalUser.email,
+                            role: newInternalUser.role,
+                            status: "Ativo",
+                            createdAt: new Date().toLocaleDateString("pt-BR"),
+                          };
+                          setInternalUsers([...internalUsers, newUser]);
+                          setIsNewUserDialogOpen(false);
+                          setNewInternalUser({
+                            name: "",
+                            email: "",
+                            role: "Suporte",
+                            password: "",
+                          });
+                          console.log("New internal user created:", newUser);
+                        }}
+                      >
+                        Cadastrar
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Usuários Internos</CardTitle>
+                  <CardDescription>
+                    {internalUsers.length} usuários cadastrados no sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Função</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Data de Criação</TableHead>
+                        <TableHead>Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {internalUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">
+                            {user.name}
+                          </TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                user.role === "Administrador"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
+                              {user.role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                user.status === "Ativo"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
+                              {user.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{user.createdAt}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Button variant="ghost" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="sm">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </main>
       </div>
+
+      {/* Representative Modal */}
+      <Dialog
+        open={isRepresentativeModalOpen}
+        onOpenChange={setIsRepresentativeModalOpen}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Informações do Representante</DialogTitle>
+            <DialogDescription>
+              Dados principais do representante selecionado
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRepresentativeForModal && (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-4">
+                <Avatar className="h-16 w-16">
+                  <AvatarImage
+                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedRepresentativeForModal.name}`}
+                  />
+                  <AvatarFallback>
+                    {selectedRepresentativeForModal.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <h3 className="text-lg font-semibold">
+                    {selectedRepresentativeForModal.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    ID:{" "}
+                    {selectedRepresentativeForModal.id
+                      .toString()
+                      .padStart(3, "0")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Email
+                  </p>
+                  <p className="text-sm">
+                    {selectedRepresentativeForModal.email}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Telefone
+                  </p>
+                  <p className="text-sm">
+                    {selectedRepresentativeForModal.phone}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Total de Vendas
+                  </p>
+                  <p className="text-sm font-semibold text-green-600">
+                    {selectedRepresentativeForModal.totalSales}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Contratos
+                  </p>
+                  <p className="text-sm">
+                    {selectedRepresentativeForModal.contractsCount} contratos
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Status
+                  </p>
+                  <Badge
+                    variant={
+                      selectedRepresentativeForModal.status === "Ativo"
+                        ? "default"
+                        : "secondary"
+                    }
+                  >
+                    {selectedRepresentativeForModal.status}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Data de Cadastro
+                  </p>
+                  <p className="text-sm">
+                    {selectedRepresentativeForModal.joinDate}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                setIsRepresentativeModalOpen(false);
+                if (selectedRepresentativeForModal) {
+                  navigate(
+                    `/representative/${selectedRepresentativeForModal.id}`,
+                  );
+                }
+              }}
+            >
+              Ver Perfil Completo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rejection Dialog */}
+      <Dialog
+        open={isRejectionDialogOpen}
+        onOpenChange={setIsRejectionDialogOpen}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Reprovar Solicitação</DialogTitle>
+            <DialogDescription>
+              Informe o motivo da reprovação para {selectedPendingRep?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="rejectionReason">Motivo da Reprovação *</Label>
+              <textarea
+                id="rejectionReason"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="w-full mt-1 p-2 border rounded-md min-h-[100px]"
+                placeholder="Descreva o motivo da reprovação..."
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsRejectionDialogOpen(false);
+                setRejectionReason("");
+                setSelectedPendingRep(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (rejectionReason.trim() && selectedPendingRep) {
+                  // Remove from pending registrations
+                  setPendingRegistrations((prev) =>
+                    prev.filter((p) => p.id !== selectedPendingRep.id),
+                  );
+                  console.log(
+                    "Registration rejected:",
+                    selectedPendingRep,
+                    "Reason:",
+                    rejectionReason,
+                  );
+
+                  setIsRejectionDialogOpen(false);
+                  setRejectionReason("");
+                  setSelectedPendingRep(null);
+                } else {
+                  alert("Por favor, informe o motivo da reprovação.");
+                }
+              }}
+              disabled={!rejectionReason.trim()}
+            >
+              Confirmar Reprovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

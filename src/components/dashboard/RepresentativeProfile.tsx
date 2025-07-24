@@ -32,6 +32,8 @@ import {
   Filter,
   Eye,
   Trash2,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import {
   Select,
@@ -523,6 +525,108 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
                   </p>
                 </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Documents Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Documentos</CardTitle>
+            <CardDescription>
+              Status dos documentos enviados pelo representante
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              {[
+                {
+                  name: "Cartão do CNPJ",
+                  status: "approved",
+                  uploadDate: "15/12/2023",
+                },
+                {
+                  name: "Comprovante de Endereço",
+                  status: "approved",
+                  uploadDate: "15/12/2023",
+                },
+                {
+                  name: "Certidão de Antecedente Criminal",
+                  status: "pending",
+                  uploadDate: "16/12/2023",
+                },
+                {
+                  name: "Certidão Negativa Civil",
+                  status: "approved",
+                  uploadDate: "15/12/2023",
+                },
+              ].map((doc, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 border rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{doc.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Enviado em {doc.uploadDate}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        doc.status === "approved"
+                          ? "default"
+                          : doc.status === "pending"
+                            ? "outline"
+                            : "destructive"
+                      }
+                    >
+                      {doc.status === "approved"
+                        ? "Aprovado"
+                        : doc.status === "pending"
+                          ? "Pendente"
+                          : "Rejeitado"}
+                    </Badge>
+                    <Button variant="ghost" size="sm">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    {doc.status === "pending" && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            console.log(`Approving document: ${doc.name}`);
+                            // Here you would update the document status
+                          }}
+                          className="text-green-600 hover:text-green-700"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const reason = prompt("Motivo da rejeição:");
+                            if (reason) {
+                              console.log(
+                                `Rejecting document: ${doc.name}, Reason: ${reason}`,
+                              );
+                              // Here you would update the document status and add rejection reason
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

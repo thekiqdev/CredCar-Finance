@@ -36,11 +36,27 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
       // In a real implementation, this would call an authentication API
       await onLogin(email, password, role);
 
-      // Redirect based on role
-      if (role === "administrator") {
-        navigate("/admindashboard");
-      } else {
+      // Check if representative account is pending approval
+      if (role === "representative") {
+        // Simulate checking account status
+        const accountStatus = "active"; // This would come from the API
+        const documentsUploaded = false; // This would come from the API
+
+        if (accountStatus === "pending") {
+          setError("Sua conta está pendente de aprovação pelo administrador.");
+          setIsLoading(false);
+          return;
+        }
+
+        if (accountStatus === "active" && !documentsUploaded) {
+          // First login after approval - redirect to document upload
+          navigate("/documentos");
+          return;
+        }
+
         navigate("/representante");
+      } else {
+        navigate("/admindashboard");
       }
     } catch (err) {
       setError("Credenciais inválidas. Por favor, tente novamente.");
@@ -67,6 +83,21 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          <Alert className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Novo representante?</strong>{" "}
+              <Button
+                variant="link"
+                className="p-0 h-auto text-blue-600 hover:text-blue-800"
+                onClick={() => navigate("/cadastro")}
+                type="button"
+              >
+                Clique aqui para se cadastrar
+              </Button>
+            </AlertDescription>
+          </Alert>
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
