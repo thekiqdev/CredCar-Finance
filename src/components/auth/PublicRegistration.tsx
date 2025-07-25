@@ -121,15 +121,53 @@ const PublicRegistration = () => {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Import Supabase functions
+      const { signUp, createProfile } = await import("@/lib/supabase");
 
-      // In a real implementation, this would send data to the backend
-      console.log("Registration submitted:", formData);
+      // Create user in auth.users
+      const { data: authData, error: authError } = await signUp(
+        formData.email,
+        formData.senha,
+      );
+
+      if (authError) {
+        throw new Error(authError.message);
+      }
+
+      if (!authData.user) {
+        throw new Error("Falha ao criar usuário");
+      }
+
+      // Create profile in public.profiles
+      const { error: profileError } = await createProfile({
+        id: authData.user.id,
+        full_name: formData.nomeCompleto,
+        email: formData.email,
+        phone: formData.telefone,
+        role: "Representante",
+        status: "Pendente de Aprovação",
+        cnpj: formData.cnpj,
+        company_name: formData.razaoSocial,
+        point_of_sale: formData.pontoVenda,
+        commission_code: null, // Will be generated when approved
+      });
+
+      if (profileError) {
+        throw new Error(profileError.message);
+      }
+
+      console.log("Registration successful:", {
+        userId: authData.user.id,
+        email: formData.email,
+        name: formData.nomeCompleto,
+      });
 
       setIsSuccess(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Registration error:", error);
+      setErrors({
+        submit: error.message || "Erro ao processar cadastro. Tente novamente.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -316,6 +354,13 @@ const PublicRegistration = () => {
                 )}
               </div>
             </div>
+
+            {errors.submit && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{errors.submit}</AlertDescription>
+              </Alert>
+            )}
 
             <div className="pt-4">
               <Button

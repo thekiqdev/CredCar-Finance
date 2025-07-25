@@ -14,9 +14,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { signIn, getProfile } from "@/lib/supabase";
 
 interface LoginFormProps {
-  onLogin?: (email: string, password: string, role: string) => void;
+  onLogin?: (user: any, profile: any) => void;
 }
 
 const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
@@ -33,33 +34,74 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
     setIsLoading(true);
 
     try {
-      // In a real implementation, this would call an authentication API
-      await onLogin(email, password, role);
+      // Authenticate with Supabase
+      const { data: authData, error: authError } = await signIn(
+        email,
+        password,
+      );
 
-      // Check if representative account is pending approval
-      if (role === "representative") {
-        // Simulate checking account status
-        const accountStatus = "active"; // This would come from the API
-        const documentsUploaded = false; // This would come from the API
+      if (authError) {
+        throw new Error(authError.message);
+      }
 
-        if (accountStatus === "pending") {
+      if (!authData.user) {
+        throw new Error("Falha na autenticação");
+      }
+
+      // Get user profile
+      const { data: profile, error: profileError } = await getProfile(
+        authData.user.id,
+      );
+
+      if (profileError || !profile) {
+        throw new Error("Perfil não encontrado");
+      }
+
+      // Check if the role matches what user selected
+      const userRole =
+        profile.role === "Administrador" || profile.role === "Suporte"
+          ? "administrator"
+          : "representative";
+
+      if (userRole !== role) {
+        throw new Error("Tipo de acesso incorreto para este usuário");
+      }
+
+      // Call the onLogin callback
+      await onLogin(authData.user, profile);
+
+      // Handle different user statuses and roles
+      if (profile.role === "Representante") {
+        if (profile.status === "Pendente de Aprovação") {
           setError("Sua conta está pendente de aprovação pelo administrador.");
           setIsLoading(false);
           return;
         }
 
-        if (accountStatus === "active" && !documentsUploaded) {
+        if (profile.status === "Documentos Pendentes") {
           // First login after approval - redirect to document upload
           navigate("/documentos");
           return;
         }
 
-        navigate("/representante");
+        if (profile.status === "Ativo") {
+          navigate("/representante");
+        } else {
+          setError(
+            `Conta ${profile.status.toLowerCase()}. Entre em contato com o administrador.`,
+          );
+          setIsLoading(false);
+          return;
+        }
       } else {
+        // Administrator or Support
         navigate("/admindashboard");
       }
-    } catch (err) {
-      setError("Credenciais inválidas. Por favor, tente novamente.");
+    } catch (err: any) {
+      console.error("Login error:", err);
+      setError(
+        err.message || "Credenciais inválidas. Por favor, tente novamente.",
+      );
     } finally {
       setIsLoading(false);
     }

@@ -69,6 +69,9 @@ import {
 interface AdminDashboardProps {
   userName?: string;
   notifications?: number;
+  onLogout?: () => void;
+  currentUser?: any;
+  currentProfile?: any;
 }
 
 interface Contract {
@@ -97,40 +100,16 @@ interface Invoice {
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   userName = "Admin User",
   notifications = 5,
+  onLogout = () => {},
+  currentUser,
+  currentProfile,
 }) => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("dashboard");
-  const [activeConfigTab, setActiveConfigTab] = useState("commission-tables");
-  const [isNewRepDialogOpen, setIsNewRepDialogOpen] = useState(false);
-  const [isEditRepDialogOpen, setIsEditRepDialogOpen] = useState(false);
-  const [isDeleteRepDialogOpen, setIsDeleteRepDialogOpen] = useState(false);
-  const [editingRepresentative, setEditingRepresentative] = useState(null);
-  const [deletingRepresentative, setDeletingRepresentative] = useState(null);
-  const [adminPassword, setAdminPassword] = useState("");
-  const [newRepresentative, setNewRepresentative] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    cnpj: "",
-    razaoSocial: "",
-    pontoVenda: "",
-    commissionCode: "",
-    password: "",
-    status: "active",
-  });
-  const [nextRepresentativeId, setNextRepresentativeId] = useState(6);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
-  const [isEarlyPaymentDialogOpen, setIsEarlyPaymentDialogOpen] =
-    useState(false);
-  const [selectedContract, setSelectedContract] = useState<Contract | null>(
-    null,
-  );
-  const [earlyPaymentInstallments, setEarlyPaymentInstallments] = useState("");
+  const [representatives, setRepresentatives] = useState([]);
   const [contracts, setContracts] = useState<Contract[]>([
     {
-      id: "PV-2023-001",
+      id: "PV-2025-001-G1/15-01-2023",
       client: "João Silva",
       representative: "Carlos Oliveira",
       value: 45000,
@@ -139,31 +118,42 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       remainingValue: 38250,
       status: "Ativo",
       createdAt: "2023-01-15",
+      group: "G1",
+      quota: "Q001",
+      totalCredit: 45000,
+      totalPaid: 6750,
     },
     {
-      id: "PV-2023-002",
+      id: "PV-2025-002-G2/20-02-2023",
       client: "Maria Santos",
       representative: "Ana Pereira",
       value: 38500,
       installments: 80,
       paidInstallments: 8,
       remainingValue: 34650,
-      status: "Ativo",
+      status: "Faturado",
       createdAt: "2023-02-20",
+      group: "G2",
+      quota: "Q002",
+      totalCredit: 38500,
+      totalPaid: 3850,
     },
     {
-      id: "PV-2023-003",
+      id: "PV-2025-003-G1/10-01-2023",
       client: "Pedro Costa",
       representative: "Carlos Oliveira",
       value: 52000,
       installments: 80,
       paidInstallments: 15,
       remainingValue: 42250,
-      status: "Ativo",
+      status: "Em Atraso",
       createdAt: "2023-01-10",
+      group: "G1",
+      quota: "Q003",
+      totalCredit: 52000,
+      totalPaid: 9750,
     },
   ]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [commissionTables, setCommissionTables] = useState([
     {
       id: "A",
@@ -198,6 +188,66 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       activeContracts: 46,
     },
   ]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+  const [activeConfigTab, setActiveConfigTab] = useState("commission-tables");
+  const [isNewRepDialogOpen, setIsNewRepDialogOpen] = useState(false);
+  const [isEditRepDialogOpen, setIsEditRepDialogOpen] = useState(false);
+  const [isDeleteRepDialogOpen, setIsDeleteRepDialogOpen] = useState(false);
+  const [editingRepresentative, setEditingRepresentative] = useState(null);
+  const [deletingRepresentative, setDeletingRepresentative] = useState(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [newRepresentative, setNewRepresentative] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    cnpj: "",
+    razaoSocial: "",
+    pontoVenda: "",
+    commissionCode: "",
+    password: "",
+    status: "active",
+  });
+  const [nextRepresentativeId, setNextRepresentativeId] = useState(6);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [isEarlyPaymentDialogOpen, setIsEarlyPaymentDialogOpen] =
+    useState(false);
+  const [selectedContract, setSelectedContract] = useState<Contract | null>(
+    null,
+  );
+  const [earlyPaymentInstallments, setEarlyPaymentInstallments] = useState("");
+
+  const [groups, setGroups] = useState([
+    {
+      id: "G1",
+      name: "Grupo Premium",
+      totalQuotas: 100,
+      occupiedQuotas: 45,
+      availableQuotas: 55,
+    },
+    {
+      id: "G2",
+      name: "Grupo Standard",
+      totalQuotas: 80,
+      occupiedQuotas: 32,
+      availableQuotas: 48,
+    },
+    {
+      id: "G3",
+      name: "Grupo Básico",
+      totalQuotas: 60,
+      occupiedQuotas: 18,
+      availableQuotas: 42,
+    },
+  ]);
+  const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
+  const [newGroup, setNewGroup] = useState({
+    name: "",
+    totalQuotas: 50,
+  });
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+
   const [withdrawalRequests, setWithdrawalRequests] = useState([
     {
       id: "WR-001",
@@ -206,6 +256,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       requestDate: "2023-06-20",
       status: "pending",
       availableBalance: 3200,
+      invoiceFile: "nota_fiscal_001.pdf",
     },
     {
       id: "WR-002",
@@ -214,6 +265,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       requestDate: "2023-06-21",
       status: "pending",
       availableBalance: 2100,
+      invoiceFile: "nf_ana_002.pdf",
     },
     {
       id: "WR-003",
@@ -222,8 +274,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       requestDate: "2023-06-19",
       status: "approved",
       availableBalance: 1500,
+      invoiceFile: "invoice_marcos.pdf",
     },
   ]);
+
+  const [selectedWithdrawalRequest, setSelectedWithdrawalRequest] =
+    useState(null);
   const [isNewTableDialogOpen, setIsNewTableDialogOpen] = useState(false);
   const [newTable, setNewTable] = useState({
     name: "",
@@ -328,6 +384,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     password: "",
   });
 
+  // Load data from Supabase
+  React.useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const { getRepresentatives, getContracts, getCommissionTables } =
+        await import("@/lib/supabase");
+
+      const [repsResult, contractsResult, tablesResult] = await Promise.all([
+        getRepresentatives(),
+        getContracts(),
+        getCommissionTables(),
+      ]);
+
+      if (repsResult.data) {
+        setRepresentatives(repsResult.data);
+      }
+      if (contractsResult.data) {
+        setContracts(contractsResult.data);
+      }
+      if (tablesResult.data) {
+        setCommissionTables(tablesResult.data);
+      }
+    } catch (error) {
+      console.error("Error loading data:", error);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
+
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState({
     asaasApiKey: "",
@@ -347,7 +435,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
 
   // Mock data for representatives
-  const representatives = [
+  const mockRepresentatives = [
     {
       id: 1,
       name: "Carlos Oliveira",
@@ -594,6 +682,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleWithdrawalAction = (
     requestId: string,
     action: "approve" | "reject",
+    reason?: string,
   ) => {
     setWithdrawalRequests((prev) =>
       prev.map((request) =>
@@ -601,11 +690,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ? {
               ...request,
               status: action === "approve" ? "approved" : "rejected",
+              rejectionReason: action === "reject" ? reason : undefined,
             }
           : request,
       ),
     );
-    console.log(`Withdrawal request ${requestId} ${action}d`);
+    console.log(
+      `Withdrawal request ${requestId} ${action}d`,
+      reason ? `Reason: ${reason}` : "",
+    );
+  };
+
+  const handleRejectWithReason = () => {
+    if (!selectedWithdrawalRequest || !rejectionReason.trim()) {
+      alert("Por favor, informe o motivo da reprovação");
+      return;
+    }
+
+    handleWithdrawalAction(
+      selectedWithdrawalRequest.id,
+      "reject",
+      rejectionReason,
+    );
+    setIsRejectionDialogOpen(false);
+    setRejectionReason("");
+    setSelectedWithdrawalRequest(null);
+  };
+
+  const handleCreateGroup = () => {
+    const groupId = `G${groups.length + 1}`;
+    const group = {
+      id: groupId,
+      name: newGroup.name,
+      totalQuotas: newGroup.totalQuotas,
+      occupiedQuotas: 0,
+      availableQuotas: newGroup.totalQuotas,
+    };
+    setGroups((prev) => [...prev, group]);
+    setIsNewGroupDialogOpen(false);
+    setNewGroup({ name: "", totalQuotas: 50 });
+    console.log("New group created:", group);
   };
 
   const handleCreateTable = () => {
@@ -1016,14 +1140,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </Button>
               <div className="flex items-center">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" />
-                  <AvatarFallback>AU</AvatarFallback>
+                  <AvatarImage
+                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userName}`}
+                  />
+                  <AvatarFallback>
+                    {userName
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="ml-2 hidden md:block">
                   <p className="text-sm font-medium">{userName}</p>
-                  <p className="text-xs text-muted-foreground">Administrador</p>
+                  <p className="text-xs text-muted-foreground">
+                    {currentProfile?.role || "Administrador"}
+                  </p>
                 </div>
-                <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onLogout}
+                  className="ml-2"
+                >
+                  Sair
+                </Button>
               </div>
             </div>
           </div>
@@ -1894,6 +2034,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <TabsTrigger value="commission-tables">
                     Tabelas de Comissão
                   </TabsTrigger>
+                  <TabsTrigger value="groups-quotas">
+                    Grupos e Cotas
+                  </TabsTrigger>
                   <TabsTrigger value="payments">Pagamentos (Asaas)</TabsTrigger>
                   <TabsTrigger value="email">Configuração de Email</TabsTrigger>
                 </TabsList>
@@ -2064,6 +2207,160 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 size="sm"
                                 onClick={() => handleDeleteTable(table.id)}
                                 disabled={table.activeContracts > 0}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Groups and Quotas Tab */}
+                <TabsContent value="groups-quotas">
+                  <div className="mb-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">Grupos e Cotas</h2>
+                      <p className="text-muted-foreground">
+                        Gerencie os grupos de contratos e suas cotas disponíveis
+                      </p>
+                    </div>
+                    <Dialog
+                      open={isNewGroupDialogOpen}
+                      onOpenChange={setIsNewGroupDialogOpen}
+                    >
+                      <DialogTrigger asChild>
+                        <Button>
+                          <PlusCircle className="mr-2 h-4 w-4" />
+                          Novo Grupo
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Criar Novo Grupo</DialogTitle>
+                          <DialogDescription>
+                            Configure um novo grupo de contratos.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="groupName" className="text-right">
+                              Nome
+                            </Label>
+                            <Input
+                              id="groupName"
+                              value={newGroup.name}
+                              onChange={(e) =>
+                                setNewGroup({
+                                  ...newGroup,
+                                  name: e.target.value,
+                                })
+                              }
+                              className="col-span-3"
+                              placeholder="Nome do grupo"
+                            />
+                          </div>
+                          <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="totalQuotas" className="text-right">
+                              Total de Cotas
+                            </Label>
+                            <Input
+                              id="totalQuotas"
+                              type="number"
+                              value={newGroup.totalQuotas}
+                              onChange={(e) =>
+                                setNewGroup({
+                                  ...newGroup,
+                                  totalQuotas: parseInt(e.target.value) || 0,
+                                })
+                              }
+                              className="col-span-3"
+                              min="1"
+                              max="1000"
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button type="submit" onClick={handleCreateGroup}>
+                            Criar Grupo
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Lista de Grupos</CardTitle>
+                      <CardDescription>
+                        Gerencie os grupos de contratos e o status das cotas
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {groups.map((group) => (
+                          <div
+                            key={group.id}
+                            className="flex items-center justify-between p-4 border rounded-lg"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <Badge variant="outline">{group.id}</Badge>
+                                <h4 className="font-medium">{group.name}</h4>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    Total de Cotas:
+                                  </span>
+                                  <p className="font-medium">
+                                    {group.totalQuotas}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    Ocupadas:
+                                  </span>
+                                  <p className="font-medium text-red-600">
+                                    {group.occupiedQuotas}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    Disponíveis:
+                                  </span>
+                                  <p className="font-medium text-green-600">
+                                    {group.availableQuotas}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="mt-2">
+                                <Progress
+                                  value={
+                                    (group.occupiedQuotas / group.totalQuotas) *
+                                    100
+                                  }
+                                  className="h-2"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {Math.round(
+                                    (group.occupiedQuotas / group.totalQuotas) *
+                                      100,
+                                  )}
+                                  % ocupado
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 ml-4">
+                              <Button variant="ghost" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={group.occupiedQuotas > 0}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -2697,6 +2994,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                             <div>
                               <p className="text-muted-foreground">
+                                Nota Fiscal
+                              </p>
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto font-normal text-blue-600"
+                                onClick={() =>
+                                  console.log(
+                                    "Download invoice:",
+                                    request.invoiceFile,
+                                  )
+                                }
+                              >
+                                {request.invoiceFile}
+                              </Button>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">
                                 ID da Solicitação
                               </p>
                               <p className="font-medium">{request.id}</p>
@@ -2718,12 +3032,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <Button
                               size="sm"
                               variant="destructive"
-                              onClick={() =>
-                                handleWithdrawalAction(request.id, "reject")
-                              }
+                              onClick={() => {
+                                setSelectedWithdrawalRequest(request);
+                                setIsRejectionDialogOpen(true);
+                              }}
                             >
                               <XCircle className="mr-1 h-3 w-3" />
-                              Rejeitar
+                              Reprovar
                             </Button>
                           </div>
                         )}
@@ -3473,10 +3788,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Rejection Dialog */}
+      {/* Rejection Dialog for Registration */}
       <Dialog
-        open={isRejectionDialogOpen}
-        onOpenChange={setIsRejectionDialogOpen}
+        open={isRejectionDialogOpen && selectedPendingRep}
+        onOpenChange={(open) => {
+          if (!open && selectedPendingRep) {
+            setIsRejectionDialogOpen(false);
+            setRejectionReason("");
+            setSelectedPendingRep(null);
+          }
+        }}
       >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -3488,11 +3809,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="space-y-4">
             <div>
               <Label htmlFor="rejectionReason">Motivo da Reprovação *</Label>
-              <textarea
+              <Textarea
                 id="rejectionReason"
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
-                className="w-full mt-1 p-2 border rounded-md min-h-[100px]"
+                className="min-h-[100px]"
                 placeholder="Descreva o motivo da reprovação..."
                 required
               />
@@ -3531,6 +3852,74 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   alert("Por favor, informe o motivo da reprovação.");
                 }
               }}
+              disabled={!rejectionReason.trim()}
+            >
+              Confirmar Reprovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rejection Dialog for Withdrawal Request */}
+      <Dialog
+        open={isRejectionDialogOpen && selectedWithdrawalRequest}
+        onOpenChange={(open) => {
+          if (!open && selectedWithdrawalRequest) {
+            setIsRejectionDialogOpen(false);
+            setRejectionReason("");
+            setSelectedWithdrawalRequest(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Reprovar Solicitação de Retirada</DialogTitle>
+            <DialogDescription>
+              Informe o motivo da reprovação para{" "}
+              {selectedWithdrawalRequest?.representativeName}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <h4 className="font-medium text-red-800">
+                {selectedWithdrawalRequest?.representativeName}
+              </h4>
+              <p className="text-sm text-red-600">
+                Valor: R${" "}
+                {selectedWithdrawalRequest?.amount.toLocaleString("pt-BR")}
+              </p>
+              <p className="text-sm text-red-600">
+                ID: {selectedWithdrawalRequest?.id}
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="withdrawalRejectionReason">
+                Motivo da Reprovação *
+              </Label>
+              <Textarea
+                id="withdrawalRejectionReason"
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="min-h-[100px]"
+                placeholder="Descreva o motivo da reprovação da solicitação de retirada..."
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsRejectionDialogOpen(false);
+                setRejectionReason("");
+                setSelectedWithdrawalRequest(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRejectWithReason}
               disabled={!rejectionReason.trim()}
             >
               Confirmar Reprovação

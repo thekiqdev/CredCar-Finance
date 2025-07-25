@@ -34,6 +34,14 @@ import {
   Eye,
   Download,
   Filter,
+  Upload,
+  PieChart,
+  Receipt,
+  CreditCard,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  FastForward,
 } from "lucide-react";
 import {
   Dialog,
@@ -46,9 +54,20 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface RepresentativeDashboardProps {
   representativeName?: string;
+  onLogout?: () => void;
+  currentUser?: any;
+  currentProfile?: any;
   performanceData?: {
     totalSales: number;
     targetSales: number;
@@ -79,6 +98,9 @@ interface RepresentativeDashboardProps {
 
 const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
   representativeName = "João Silva",
+  onLogout = () => {},
+  currentUser,
+  currentProfile,
   performanceData = {
     totalSales: 320000,
     targetSales: 500000,
@@ -88,53 +110,55 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
     nextCommissionDate: "15/07/2023",
     nextCommissionValue: 3200,
   },
-  myContracts = [
-    {
-      id: "1",
-      contractNumber: "CT-2023-015",
-      clientName: "Carlos Oliveira",
-      date: "10/07/2023",
-      value: 45000,
-      status: "active",
-      commission: 1800,
-    },
-    {
-      id: "2",
-      contractNumber: "CT-2023-014",
-      clientName: "Maria Santos",
-      date: "08/07/2023",
-      value: 52000,
-      status: "completed",
-      commission: 2080,
-    },
-    {
-      id: "3",
-      contractNumber: "CT-2023-013",
-      clientName: "Pedro Costa",
-      date: "05/07/2023",
-      value: 38500,
-      status: "pending",
-      commission: 1540,
-    },
-    {
-      id: "4",
-      contractNumber: "CT-2023-012",
-      clientName: "Ana Pereira",
-      date: "02/07/2023",
-      value: 41000,
-      status: "active",
-      commission: 1640,
-    },
-    {
-      id: "5",
-      contractNumber: "CT-2023-011",
-      clientName: "Roberto Silva",
-      date: "28/06/2023",
-      value: 29000,
-      status: "cancelled",
-      commission: 0,
-    },
-  ],
+  myContracts = myContracts.length > 0
+    ? myContracts
+    : [
+        {
+          id: "1",
+          contractNumber: "CT-2023-015",
+          clientName: "Carlos Oliveira",
+          date: "10/07/2023",
+          value: 45000,
+          status: "active",
+          commission: 1800,
+        },
+        {
+          id: "2",
+          contractNumber: "CT-2023-014",
+          clientName: "Maria Santos",
+          date: "08/07/2023",
+          value: 52000,
+          status: "completed",
+          commission: 2080,
+        },
+        {
+          id: "3",
+          contractNumber: "CT-2023-013",
+          clientName: "Pedro Costa",
+          date: "05/07/2023",
+          value: 38500,
+          status: "pending",
+          commission: 1540,
+        },
+        {
+          id: "4",
+          contractNumber: "CT-2023-012",
+          clientName: "Ana Pereira",
+          date: "02/07/2023",
+          value: 41000,
+          status: "active",
+          commission: 1640,
+        },
+        {
+          id: "5",
+          contractNumber: "CT-2023-011",
+          clientName: "Roberto Silva",
+          date: "28/06/2023",
+          value: 29000,
+          status: "cancelled",
+          commission: 0,
+        },
+      ],
   commissionHistory = [
     {
       id: "1",
@@ -182,21 +206,141 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
     React.useState(false);
   const [withdrawalAmount, setWithdrawalAmount] = React.useState("");
   const [activeTab, setActiveTab] = React.useState("dashboard");
+  const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
+  const [isInvoiceDetailsOpen, setIsInvoiceDetailsOpen] = React.useState(false);
+  const [selectedInvoice, setSelectedInvoice] = React.useState<any>(null);
+  const [isEarlyPaymentRequestOpen, setIsEarlyPaymentRequestOpen] =
+    React.useState(false);
+  const [selectedContract, setSelectedContract] = React.useState<any>(null);
+  const [earlyPaymentInstallments, setEarlyPaymentInstallments] =
+    React.useState("");
+  const [chartFilter, setChartFilter] = React.useState("active");
+
+  const [isDataLoading, setIsDataLoading] = React.useState(true);
   const availableBalance = performanceData.pendingCommission;
+
+  // Load representative's contracts from Supabase
+  React.useEffect(() => {
+    if (currentUser) {
+      loadRepresentativeData();
+    }
+  }, [currentUser]);
+
+  const loadRepresentativeData = async () => {
+    try {
+      const { getContracts } = await import("@/lib/supabase");
+
+      const { data: contractsData } = await getContracts(currentUser.id);
+
+      if (contractsData) {
+        // Transform Supabase data to component format
+        const transformedContracts = contractsData.map((contract) => ({
+          id: contract.id.toString(),
+          contractNumber: contract.contract_code,
+          clientName: contract.clients?.full_name || "Cliente",
+          date: new Date(contract.created_at).toLocaleDateString("pt-BR"),
+          value: contract.total_value,
+          status: contract.status.toLowerCase().replace(" ", "_"),
+          commission:
+            (contract.total_value *
+              (contract.commission_tables?.commission_percentage || 4)) /
+            100,
+        }));
+        setMyContracts(transformedContracts);
+      }
+    } catch (error) {
+      console.error("Error loading representative data:", error);
+    } finally {
+      setIsDataLoading(false);
+    }
+  };
 
   const handleWithdrawalRequest = () => {
     const amount = parseFloat(withdrawalAmount);
-    if (amount > 0 && amount <= availableBalance) {
-      console.log(`Withdrawal request: R$ ${amount.toLocaleString("pt-BR")}`);
+    if (amount > 0 && amount <= availableBalance && uploadedFile) {
+      console.log(
+        `Withdrawal request: R$ ${amount.toLocaleString("pt-BR")}`,
+        uploadedFile,
+      );
       setIsWithdrawalDialogOpen(false);
       setWithdrawalAmount("");
+      setUploadedFile(null);
       alert(
         `Solicitação de retirada de R$ ${amount.toLocaleString("pt-BR")} enviada com sucesso!`,
       );
     } else {
-      alert("Valor inválido para retirada");
+      if (!uploadedFile) {
+        alert("É obrigatório anexar a Nota Fiscal para solicitar a retirada");
+      } else {
+        alert("Valor inválido para retirada");
+      }
     }
   };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const validTypes = [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "image/jpg",
+      ];
+      if (validTypes.includes(file.type)) {
+        setUploadedFile(file);
+      } else {
+        alert("Por favor, selecione um arquivo PDF ou imagem (JPG, PNG)");
+      }
+    }
+  };
+
+  const handleEarlyPaymentRequest = () => {
+    if (!selectedContract || !earlyPaymentInstallments) return;
+
+    const installmentsCount = parseInt(earlyPaymentInstallments);
+    const remainingInstallments =
+      selectedContract.installments - selectedContract.paidInstallments;
+
+    if (installmentsCount <= 0 || installmentsCount > remainingInstallments) {
+      alert("Número de parcelas inválido");
+      return;
+    }
+
+    console.log("Early payment request:", {
+      contract: selectedContract.contractNumber,
+      installments: installmentsCount,
+      client: selectedContract.clientName,
+    });
+
+    setIsEarlyPaymentRequestOpen(false);
+    setSelectedContract(null);
+    setEarlyPaymentInstallments("");
+    alert("Solicitação de antecipação enviada para aprovação do administrador");
+  };
+
+  // Mock data for client payment status chart
+  const getClientStatusData = () => {
+    const activeContracts = myContracts.filter((c) =>
+      chartFilter === "active"
+        ? ["active", "pending"].includes(c.status)
+        : ["completed", "cancelled"].includes(c.status),
+    );
+
+    const onTime = activeContracts.filter(
+      (c) => c.status === "active" || c.status === "completed",
+    ).length;
+    const late = activeContracts.filter(
+      (c) => c.status === "pending" || c.status === "cancelled",
+    ).length;
+
+    return {
+      onTime,
+      late,
+      total: activeContracts.length,
+    };
+  };
+
+  const clientStatusData = getClientStatusData();
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -228,6 +372,14 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                 <p className="text-sm font-medium">{representativeName}</p>
                 <p className="text-xs text-muted-foreground">Representante</p>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onLogout}
+                className="ml-2"
+              >
+                Sair
+              </Button>
             </div>
           </div>
         </div>
@@ -277,6 +429,107 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
         <main className="flex-1 overflow-y-auto p-6">
           {activeTab === "dashboard" && (
             <>
+              {/* Client Status Chart */}
+              <div className="mb-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Status dos Clientes</CardTitle>
+                        <CardDescription>
+                          Análise de adimplência da sua carteira
+                        </CardDescription>
+                      </div>
+                      <Select
+                        value={chartFilter}
+                        onValueChange={setChartFilter}
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">
+                            Contratos Ativos
+                          </SelectItem>
+                          <SelectItem value="inactive">
+                            Contratos Inativos
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-center space-x-8">
+                      <div className="flex flex-col items-center">
+                        <div className="relative w-32 h-32">
+                          <svg
+                            className="w-32 h-32 transform -rotate-90"
+                            viewBox="0 0 36 36"
+                          >
+                            <path
+                              className="text-gray-200"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path
+                              className="text-green-500"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              strokeDasharray={`${clientStatusData.total > 0 ? (clientStatusData.onTime / clientStatusData.total) * 100 : 0}, 100`}
+                              strokeLinecap="round"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-2xl font-bold">
+                              {clientStatusData.total > 0
+                                ? Math.round(
+                                    (clientStatusData.onTime /
+                                      clientStatusData.total) *
+                                      100,
+                                  )
+                                : 0}
+                              %
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Adimplentes
+                        </p>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                          <div>
+                            <p className="text-sm font-medium">Adimplentes</p>
+                            <p className="text-xs text-muted-foreground">
+                              {clientStatusData.onTime} clientes
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                          <div>
+                            <p className="text-sm font-medium">Inadimplentes</p>
+                            <p className="text-xs text-muted-foreground">
+                              {clientStatusData.late} clientes
+                            </p>
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t">
+                          <p className="text-sm font-medium">
+                            Total: {clientStatusData.total} contratos
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
               {/* Performance Overview Cards */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
                 <Card>
@@ -512,9 +765,43 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                             R$ {contract.commission.toLocaleString("pt-BR")}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedInvoice({
+                                    ...contract,
+                                    invoiceDetails: {
+                                      totalCredit: contract.value,
+                                      totalPaid:
+                                        contract.value - contract.value * 0.7, // Mock calculation
+                                      remainingBalance: contract.value * 0.7,
+                                      dueDate: "2023-08-15",
+                                      paymentMethod: "Boleto",
+                                      barCode:
+                                        "23791.23456 78901.234567 89012.345678 9 12340000012345",
+                                      pixCode: "PIX123456789",
+                                    },
+                                  });
+                                  setIsInvoiceDetailsOpen(true);
+                                }}
+                              >
+                                <Receipt className="h-4 w-4" />
+                              </Button>
+                              {contract.status === "active" && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedContract(contract);
+                                    setIsEarlyPaymentRequestOpen(true);
+                                  }}
+                                >
+                                  <FastForward className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -572,6 +859,29 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                           step="0.01"
                         />
                       </div>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="invoice" className="text-right">
+                          Nota Fiscal *
+                        </Label>
+                        <div className="col-span-3">
+                          <Input
+                            id="invoice"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={handleFileUpload}
+                            className="mb-2"
+                          />
+                          {uploadedFile && (
+                            <div className="flex items-center space-x-2 text-sm text-green-600">
+                              <CheckCircle className="h-4 w-4" />
+                              <span>{uploadedFile.name}</span>
+                            </div>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            Formatos aceitos: PDF, JPG, PNG
+                          </p>
+                        </div>
+                      </div>
                       {withdrawalAmount && (
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                           <p className="text-sm font-medium text-blue-800">
@@ -595,11 +905,17 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                     <DialogFooter>
                       <Button
                         variant="outline"
-                        onClick={() => setIsWithdrawalDialogOpen(false)}
+                        onClick={() => {
+                          setIsWithdrawalDialogOpen(false);
+                          setUploadedFile(null);
+                        }}
                       >
                         Cancelar
                       </Button>
-                      <Button onClick={handleWithdrawalRequest}>
+                      <Button
+                        onClick={handleWithdrawalRequest}
+                        disabled={!uploadedFile || !withdrawalAmount}
+                      >
                         Solicitar Retirada
                       </Button>
                     </DialogFooter>
@@ -737,6 +1053,199 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
           )}
         </main>
       </div>
+
+      {/* Invoice Details Dialog */}
+      <Dialog
+        open={isInvoiceDetailsOpen}
+        onOpenChange={setIsInvoiceDetailsOpen}
+      >
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Fatura</DialogTitle>
+            <DialogDescription>
+              Informações de pagamento para o cliente
+            </DialogDescription>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <h4 className="font-medium text-blue-800">
+                    Valor Total do Crédito
+                  </h4>
+                  <p className="text-2xl font-bold text-blue-900">
+                    R$ {selectedInvoice.value.toLocaleString("pt-BR")}
+                  </p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <h4 className="font-medium text-green-800">
+                    Valor Total Pago
+                  </h4>
+                  <p className="text-2xl font-bold text-green-900">
+                    R${" "}
+                    {selectedInvoice.invoiceDetails.totalPaid.toLocaleString(
+                      "pt-BR",
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="p-4 bg-amber-50 rounded-lg">
+                <h4 className="font-medium text-amber-800">Saldo Restante</h4>
+                <p className="text-2xl font-bold text-amber-900">
+                  R${" "}
+                  {selectedInvoice.invoiceDetails.remainingBalance.toLocaleString(
+                    "pt-BR",
+                  )}
+                </p>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm font-medium">Vencimento</Label>
+                  <p className="text-sm">
+                    {selectedInvoice.invoiceDetails.dueDate}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">
+                    Código de Barras
+                  </Label>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={selectedInvoice.invoiceDetails.barCode}
+                      readOnly
+                      className="font-mono text-xs"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        navigator.clipboard.writeText(
+                          selectedInvoice.invoiceDetails.barCode,
+                        )
+                      }
+                    >
+                      Copiar
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Código PIX</Label>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={selectedInvoice.invoiceDetails.pixCode}
+                      readOnly
+                      className="font-mono text-xs"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        navigator.clipboard.writeText(
+                          selectedInvoice.invoiceDetails.pixCode,
+                        )
+                      }
+                    >
+                      Copiar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setIsInvoiceDetailsOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Early Payment Request Dialog */}
+      <Dialog
+        open={isEarlyPaymentRequestOpen}
+        onOpenChange={setIsEarlyPaymentRequestOpen}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Solicitar Antecipação de Parcelas</DialogTitle>
+            <DialogDescription>
+              Solicite a antecipação de parcelas em nome do cliente
+            </DialogDescription>
+          </DialogHeader>
+          {selectedContract && (
+            <div className="space-y-4">
+              <div className="p-4 bg-muted rounded-lg">
+                <h4 className="font-medium">{selectedContract.clientName}</h4>
+                <p className="text-sm text-muted-foreground">
+                  Contrato: {selectedContract.contractNumber}
+                </p>
+                <p className="text-sm">
+                  Parcelas restantes:{" "}
+                  {selectedContract.installments -
+                    selectedContract.paidInstallments}
+                </p>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="installments" className="text-right">
+                  Parcelas
+                </Label>
+                <Select
+                  value={earlyPaymentInstallments}
+                  onValueChange={setEarlyPaymentInstallments}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Selecione o número de parcelas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from(
+                      {
+                        length:
+                          selectedContract.installments -
+                          selectedContract.paidInstallments,
+                      },
+                      (_, i) => i + 1,
+                    ).map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num} parcela{num > 1 ? "s" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {earlyPaymentInstallments && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm font-medium text-blue-800">
+                    Solicitação de antecipação:
+                  </p>
+                  <p className="text-lg font-bold text-blue-900">
+                    {earlyPaymentInstallments} parcela
+                    {parseInt(earlyPaymentInstallments) > 1 ? "s" : ""}
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    Aguardará aprovação do administrador
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEarlyPaymentRequestOpen(false);
+                setSelectedContract(null);
+                setEarlyPaymentInstallments("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleEarlyPaymentRequest}
+              disabled={!earlyPaymentInstallments}
+            >
+              Solicitar Antecipação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
