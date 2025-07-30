@@ -48,6 +48,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   BarChart3,
   Users,
   FileText,
@@ -377,6 +388,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
   const [contractsFilter, setContractsFilter] = useState("all");
   const [contractsSearch, setContractsSearch] = useState("");
+  const [isStatusChangeDialogOpen, setIsStatusChangeDialogOpen] =
+    useState(false);
+  const [selectedContractForStatusChange, setSelectedContractForStatusChange] =
+    useState<any>(null);
+  const [newContractStatus, setNewContractStatus] = useState<string>("");
 
   // Load representatives and pending registrations on component mount
   useEffect(() => {
@@ -647,6 +663,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSelectedContractId(null);
     // Refresh contracts data when modal closes
     loadAllContracts();
+  };
+
+  const handleStatusChange = async (contract: any, newStatus: string) => {
+    setSelectedContractForStatusChange(contract);
+    setNewContractStatus(newStatus);
+    setIsStatusChangeDialogOpen(true);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!selectedContractForStatusChange || !newContractStatus) return;
+
+    try {
+      const { error } = await supabase
+        .from("contracts")
+        .update({
+          status:
+            newContractStatus as Database["public"]["Enums"]["contract_status"],
+        })
+        .eq("id", selectedContractForStatusChange.id);
+
+      if (error) {
+        console.error("Error updating contract status:", error);
+        alert(`Erro ao alterar status: ${error.message}`);
+        return;
+      }
+
+      // Refresh contracts list
+      await loadAllContracts();
+
+      setIsStatusChangeDialogOpen(false);
+      setSelectedContractForStatusChange(null);
+      setNewContractStatus("");
+
+      alert(
+        `Status do contrato alterado para ${newContractStatus} com sucesso!`,
+      );
+    } catch (error) {
+      console.error("Error changing contract status:", error);
+      alert("Erro ao alterar status do contrato");
+    }
   };
 
   // Pagination calculations
@@ -1805,20 +1861,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </TableCell>
                             <TableCell>
-                              <Badge
-                                variant={
-                                  contract.status === "Aprovado" ||
-                                  contract.status === "Ativo"
-                                    ? "default"
-                                    : contract.status === "Pendente"
-                                      ? "outline"
-                                      : contract.status === "Reprovado"
-                                        ? "destructive"
-                                        : "secondary"
+                              <Select
+                                value={contract.status}
+                                onValueChange={(newStatus) =>
+                                  handleStatusChange(contract, newStatus)
                                 }
                               >
-                                {contract.status}
-                              </Badge>
+                                <SelectTrigger className="w-32">
+                                  <SelectValue>
+                                    <Badge
+                                      variant={
+                                        contract.status === "Aprovado" ||
+                                        contract.status === "Ativo"
+                                          ? "default"
+                                          : contract.status === "Pendente"
+                                            ? "outline"
+                                            : contract.status === "Reprovado"
+                                              ? "destructive"
+                                              : "secondary"
+                                      }
+                                    >
+                                      {contract.status}
+                                    </Badge>
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Pendente">
+                                    Pendente
+                                  </SelectItem>
+                                  <SelectItem value="Ativo">Ativo</SelectItem>
+                                  <SelectItem value="Aprovado">
+                                    Aprovado
+                                  </SelectItem>
+                                  <SelectItem value="Reprovado">
+                                    Reprovado
+                                  </SelectItem>
+                                  <SelectItem value="Cancelado">
+                                    Cancelado
+                                  </SelectItem>
+                                  <SelectItem value="Concluído">
+                                    Concluído
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
                             </TableCell>
                             <TableCell>
                               {new Date(contract.created_at).toLocaleDateString(
@@ -1841,6 +1926,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   size="sm"
                                   onClick={() =>
                                     handleEditContract(contract.id.toString())
+                                  }
+                                  disabled={
+                                    contract.status === "Aprovado" ||
+                                    contract.status === "Ativo"
+                                  }
+                                  title={
+                                    contract.status === "Aprovado" ||
+                                    contract.status === "Ativo"
+                                      ? "Contratos aprovados só podem ser editados por administradores"
+                                      : "Editar contrato"
                                   }
                                 >
                                   <Edit className="h-4 w-4" />
@@ -1876,7 +1971,951 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
 
-          {/* Add other sections here as needed */}
+          {activeSection === "commission-reports" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Relatório de Comissões
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Visualize e gerencie os relatórios de comissões dos
+                    representantes.
+                  </p>
+                </div>
+                <Button className="bg-red-600 hover:bg-red-700">
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar Relatório
+                </Button>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Relatórios de Comissão</CardTitle>
+                  <CardDescription>
+                    Resumo das comissões por representante no período atual
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Representante</TableHead>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Total Comissão</TableHead>
+                        <TableHead>Pago</TableHead>
+                        <TableHead>Pendente</TableHead>
+                        <TableHead>Contratos</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {commissionReports.map((report) => (
+                        <TableRow key={report.id}>
+                          <TableCell className="font-medium">
+                            {report.representative}
+                          </TableCell>
+                          <TableCell>{report.period}</TableCell>
+                          <TableCell>
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(report.totalCommission)}
+                          </TableCell>
+                          <TableCell>
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(report.paidCommission)}
+                          </TableCell>
+                          <TableCell>
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(report.pendingCommission)}
+                          </TableCell>
+                          <TableCell>{report.contracts}</TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeSection === "withdrawals" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Solicitações de Retirada
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Gerencie as solicitações de retirada dos representantes.
+                  </p>
+                </div>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Solicitações Pendentes</CardTitle>
+                  <CardDescription>
+                    {
+                      withdrawalRequests.filter((r) => r.status === "pending")
+                        .length
+                    }{" "}
+                    solicitações aguardando aprovação
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ID</TableHead>
+                        <TableHead>Representante</TableHead>
+                        <TableHead>Valor Solicitado</TableHead>
+                        <TableHead>Saldo Disponível</TableHead>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {withdrawalRequests.map((request) => (
+                        <TableRow key={request.id}>
+                          <TableCell className="font-medium">
+                            {request.id}
+                          </TableCell>
+                          <TableCell>{request.representativeName}</TableCell>
+                          <TableCell>
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(request.amount)}
+                          </TableCell>
+                          <TableCell>
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(request.availableBalance)}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(request.requestDate).toLocaleDateString(
+                              "pt-BR",
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                request.status === "approved"
+                                  ? "default"
+                                  : request.status === "pending"
+                                    ? "outline"
+                                    : "destructive"
+                              }
+                            >
+                              {request.status === "pending"
+                                ? "Pendente"
+                                : request.status === "approved"
+                                  ? "Aprovado"
+                                  : "Rejeitado"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {request.status === "pending" && (
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleWithdrawalAction(
+                                      request.id,
+                                      "approve",
+                                    )
+                                  }
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleWithdrawalAction(request.id, "reject")
+                                  }
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeSection === "invoices" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Gestão de Faturas
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Gerencie as faturas e pagamentos dos contratos.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3 mb-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Faturas Pendentes
+                    </CardTitle>
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {invoices.filter((i) => i.status === "pending").length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Aguardando pagamento
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Faturas Pagas
+                    </CardTitle>
+                    <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {invoices.filter((i) => i.status === "paid").length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Pagamentos confirmados
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Faturas Vencidas
+                    </CardTitle>
+                    <XCircle className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {invoices.filter((i) => i.status === "overdue").length}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Pagamentos em atraso
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lista de Faturas</CardTitle>
+                  <CardDescription>
+                    Todas as faturas geradas no sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {invoices.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Receipt className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-lg font-medium mb-2">
+                        Nenhuma fatura encontrada
+                      </p>
+                      <p className="text-muted-foreground">
+                        As faturas aparecerão aqui quando forem geradas.
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID</TableHead>
+                          <TableHead>Contrato</TableHead>
+                          <TableHead>Parcela</TableHead>
+                          <TableHead>Valor</TableHead>
+                          <TableHead>Vencimento</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {invoices.map((invoice) => (
+                          <TableRow key={invoice.id}>
+                            <TableCell className="font-medium">
+                              {invoice.id}
+                            </TableCell>
+                            <TableCell>{invoice.contractId}</TableCell>
+                            <TableCell>
+                              {invoice.installmentNumber === 0
+                                ? "Antecipação"
+                                : `${invoice.installmentNumber}ª`}
+                            </TableCell>
+                            <TableCell>
+                              {new Intl.NumberFormat("pt-BR", {
+                                style: "currency",
+                                currency: "BRL",
+                              }).format(invoice.amount)}
+                            </TableCell>
+                            <TableCell>
+                              {new Date(invoice.dueDate).toLocaleDateString(
+                                "pt-BR",
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={
+                                  invoice.status === "paid"
+                                    ? "default"
+                                    : invoice.status === "pending"
+                                      ? "outline"
+                                      : "destructive"
+                                }
+                              >
+                                {invoice.status === "paid"
+                                  ? "Pago"
+                                  : invoice.status === "pending"
+                                    ? "Pendente"
+                                    : "Vencido"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button variant="outline" size="sm">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeSection === "settings" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Configurações
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Configure as definições do sistema.
+                  </p>
+                </div>
+              </div>
+
+              <Tabs value={activeConfigTab} onValueChange={setActiveConfigTab}>
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="commission-tables">
+                    Tabelas de Comissão
+                  </TabsTrigger>
+                  <TabsTrigger value="payment-settings">Pagamentos</TabsTrigger>
+                  <TabsTrigger value="email-settings">Email</TabsTrigger>
+                  <TabsTrigger value="system-settings">Sistema</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="commission-tables" className="space-y-4">
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle>Tabelas de Comissão</CardTitle>
+                        <CardDescription>
+                          Configure as tabelas de comissão disponíveis no
+                          sistema
+                        </CardDescription>
+                      </div>
+                      <Dialog
+                        open={isNewTableDialogOpen}
+                        onOpenChange={setIsNewTableDialogOpen}
+                      >
+                        <DialogTrigger asChild>
+                          <Button className="bg-red-600 hover:bg-red-700">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Nova Tabela
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>
+                              Criar Nova Tabela de Comissão
+                            </DialogTitle>
+                            <DialogDescription>
+                              Configure uma nova tabela de comissão para os
+                              representantes.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-4 py-4">
+                            <div>
+                              <Label htmlFor="table-name">Nome da Tabela</Label>
+                              <Input
+                                id="table-name"
+                                value={newTable.name}
+                                onChange={(e) =>
+                                  setNewTable({
+                                    ...newTable,
+                                    name: e.target.value,
+                                  })
+                                }
+                                placeholder="Ex: Tabela Premium"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="table-percentage">
+                                Percentual (%)
+                              </Label>
+                              <Input
+                                id="table-percentage"
+                                type="number"
+                                value={newTable.percentage}
+                                onChange={(e) =>
+                                  setNewTable({
+                                    ...newTable,
+                                    percentage: parseFloat(e.target.value),
+                                  })
+                                }
+                                placeholder="4"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="table-installments">
+                                Parcelas
+                              </Label>
+                              <Input
+                                id="table-installments"
+                                type="number"
+                                value={newTable.installments}
+                                onChange={(e) =>
+                                  setNewTable({
+                                    ...newTable,
+                                    installments: parseInt(e.target.value),
+                                  })
+                                }
+                                placeholder="1"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="table-description">
+                                Descrição
+                              </Label>
+                              <Input
+                                id="table-description"
+                                value={newTable.description}
+                                onChange={(e) =>
+                                  setNewTable({
+                                    ...newTable,
+                                    description: e.target.value,
+                                  })
+                                }
+                                placeholder="Descrição da tabela"
+                              />
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button
+                              variant="outline"
+                              onClick={() => setIsNewTableDialogOpen(false)}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button
+                              onClick={handleCreateTable}
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              Criar Tabela
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>ID</TableHead>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Percentual</TableHead>
+                            <TableHead>Parcelas</TableHead>
+                            <TableHead>Contratos Ativos</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {commissionTables.map((table) => (
+                            <TableRow key={table.id}>
+                              <TableCell className="font-medium">
+                                {table.id}
+                              </TableCell>
+                              <TableCell>{table.name}</TableCell>
+                              <TableCell>{table.percentage}%</TableCell>
+                              <TableCell>{table.installments}x</TableCell>
+                              <TableCell>{table.activeContracts}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex gap-2 justify-end">
+                                  <Button variant="outline" size="sm">
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteTable(table.id)}
+                                    disabled={table.activeContracts > 0}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="payment-settings" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Configurações de Pagamento</CardTitle>
+                      <CardDescription>
+                        Configure as opções de pagamento e integração com
+                        gateways
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label htmlFor="asaas-api-key">Chave API Asaas</Label>
+                        <Input
+                          id="asaas-api-key"
+                          type="password"
+                          value={paymentSettings.asaasApiKey}
+                          onChange={(e) =>
+                            setPaymentSettings({
+                              ...paymentSettings,
+                              asaasApiKey: e.target.value,
+                            })
+                          }
+                          placeholder="Insira sua chave API do Asaas"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="auto-generate-boletos"
+                          checked={paymentSettings.autoGenerateBoletos}
+                          onChange={(e) =>
+                            setPaymentSettings({
+                              ...paymentSettings,
+                              autoGenerateBoletos: e.target.checked,
+                            })
+                          }
+                        />
+                        <Label htmlFor="auto-generate-boletos">
+                          Gerar boletos automaticamente
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="enable-pix"
+                          checked={paymentSettings.enablePix}
+                          onChange={(e) =>
+                            setPaymentSettings({
+                              ...paymentSettings,
+                              enablePix: e.target.checked,
+                            })
+                          }
+                        />
+                        <Label htmlFor="enable-pix">
+                          Habilitar pagamento via PIX
+                        </Label>
+                      </div>
+                      <div>
+                        <Label htmlFor="default-due-days">
+                          Dias padrão para vencimento
+                        </Label>
+                        <Input
+                          id="default-due-days"
+                          type="number"
+                          value={paymentSettings.defaultDueDays}
+                          onChange={(e) =>
+                            setPaymentSettings({
+                              ...paymentSettings,
+                              defaultDueDays: parseInt(e.target.value),
+                            })
+                          }
+                          placeholder="30"
+                        />
+                      </div>
+                      <Button className="bg-red-600 hover:bg-red-700">
+                        Salvar Configurações
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="email-settings" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Configurações de Email</CardTitle>
+                      <CardDescription>
+                        Configure o servidor de email para envio de notificações
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label htmlFor="email-provider">
+                          Provedor de Email
+                        </Label>
+                        <Select
+                          value={emailSettings.provider}
+                          onValueChange={(value) =>
+                            setEmailSettings({
+                              ...emailSettings,
+                              provider: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="smtp">SMTP</SelectItem>
+                            <SelectItem value="sendgrid">SendGrid</SelectItem>
+                            <SelectItem value="mailgun">Mailgun</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="smtp-host">Servidor SMTP</Label>
+                          <Input
+                            id="smtp-host"
+                            value={emailSettings.smtpHost}
+                            onChange={(e) =>
+                              setEmailSettings({
+                                ...emailSettings,
+                                smtpHost: e.target.value,
+                              })
+                            }
+                            placeholder="smtp.gmail.com"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="smtp-port">Porta</Label>
+                          <Input
+                            id="smtp-port"
+                            value={emailSettings.smtpPort}
+                            onChange={(e) =>
+                              setEmailSettings({
+                                ...emailSettings,
+                                smtpPort: e.target.value,
+                              })
+                            }
+                            placeholder="587"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="smtp-user">Usuário</Label>
+                          <Input
+                            id="smtp-user"
+                            value={emailSettings.smtpUser}
+                            onChange={(e) =>
+                              setEmailSettings({
+                                ...emailSettings,
+                                smtpUser: e.target.value,
+                              })
+                            }
+                            placeholder="seu-email@gmail.com"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="smtp-password">Senha</Label>
+                          <Input
+                            id="smtp-password"
+                            type="password"
+                            value={emailSettings.smtpPassword}
+                            onChange={(e) =>
+                              setEmailSettings({
+                                ...emailSettings,
+                                smtpPassword: e.target.value,
+                              })
+                            }
+                            placeholder="sua-senha"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="encryption">Criptografia</Label>
+                        <Select
+                          value={emailSettings.encryption}
+                          onValueChange={(value) =>
+                            setEmailSettings({
+                              ...emailSettings,
+                              encryption: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="tls">TLS</SelectItem>
+                            <SelectItem value="ssl">SSL</SelectItem>
+                            <SelectItem value="none">Nenhuma</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button className="bg-red-600 hover:bg-red-700">
+                        Salvar Configurações
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="system-settings" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Configurações do Sistema</CardTitle>
+                      <CardDescription>
+                        Configurações gerais do sistema
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <Label>Configurações gerais do sistema</Label>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Esta seção será implementada com configurações
+                          específicas do sistema.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          {activeSection === "collaborators" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Colaboradores
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Gerencie os usuários internos do sistema.
+                  </p>
+                </div>
+                <Dialog
+                  open={isNewUserDialogOpen}
+                  onOpenChange={setIsNewUserDialogOpen}
+                >
+                  <DialogTrigger asChild>
+                    <Button className="bg-red-600 hover:bg-red-700">
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      Novo Colaborador
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Criar Novo Colaborador</DialogTitle>
+                      <DialogDescription>
+                        Adicione um novo usuário interno ao sistema.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div>
+                        <Label htmlFor="user-name">Nome Completo</Label>
+                        <Input
+                          id="user-name"
+                          value={newInternalUser.name}
+                          onChange={(e) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              name: e.target.value,
+                            })
+                          }
+                          placeholder="Nome do colaborador"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="user-email">Email</Label>
+                        <Input
+                          id="user-email"
+                          type="email"
+                          value={newInternalUser.email}
+                          onChange={(e) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              email: e.target.value,
+                            })
+                          }
+                          placeholder="email@empresa.com"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="user-role">Função</Label>
+                        <Select
+                          value={newInternalUser.role}
+                          onValueChange={(value) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              role: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Administrador">
+                              Administrador
+                            </SelectItem>
+                            <SelectItem value="Suporte">Suporte</SelectItem>
+                            <SelectItem value="Financeiro">
+                              Financeiro
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="user-password">Senha</Label>
+                        <Input
+                          id="user-password"
+                          type="password"
+                          value={newInternalUser.password}
+                          onChange={(e) =>
+                            setNewInternalUser({
+                              ...newInternalUser,
+                              password: e.target.value,
+                            })
+                          }
+                          placeholder="Senha do usuário"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsNewUserDialogOpen(false)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setInternalUsers([
+                            ...internalUsers,
+                            {
+                              id: internalUsers.length + 1,
+                              ...newInternalUser,
+                              status: "Ativo",
+                              createdAt: new Date().toISOString().split("T")[0],
+                            },
+                          ]);
+                          setIsNewUserDialogOpen(false);
+                          setNewInternalUser({
+                            name: "",
+                            email: "",
+                            role: "Suporte",
+                            password: "",
+                          });
+                        }}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Criar Colaborador
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lista de Colaboradores</CardTitle>
+                  <CardDescription>
+                    {internalUsers.length} colaboradores cadastrados no sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Função</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Data de Criação</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {internalUsers.map((user) => (
+                        <TableRow key={user.id}>
+                          <TableCell className="font-medium">
+                            {user.name}
+                          </TableCell>
+                          <TableCell>{user.email}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{user.role}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                user.status === "Ativo"
+                                  ? "default"
+                                  : "destructive"
+                              }
+                            >
+                              {user.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {new Date(user.createdAt).toLocaleDateString(
+                              "pt-BR",
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex gap-2 justify-end">
+                              <Button variant="outline" size="sm">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="outline" size="sm">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </main>
       </div>
 
@@ -1893,6 +2932,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Status Change Confirmation Dialog */}
+      <AlertDialog
+        open={isStatusChangeDialogOpen}
+        onOpenChange={setIsStatusChangeDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alterar Status do Contrato</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja alterar o status do contrato{" "}
+              <strong>
+                {selectedContractForStatusChange?.contract_number ||
+                  selectedContractForStatusChange?.contract_code ||
+                  `CONT-${selectedContractForStatusChange?.id}`}
+              </strong>{" "}
+              de <strong>{selectedContractForStatusChange?.status}</strong> para{" "}
+              <strong>{newContractStatus}</strong>?
+              <br />
+              <br />
+              {(newContractStatus === "Aprovado" ||
+                newContractStatus === "Ativo") && (
+                <span className="text-amber-600">
+                  <strong>Atenção:</strong> Após aprovado, o contrato só poderá
+                  ser editado por administradores.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setIsStatusChangeDialogOpen(false);
+                setSelectedContractForStatusChange(null);
+                setNewContractStatus("");
+              }}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmStatusChange}
+              className={
+                newContractStatus === "Reprovado"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-green-600 hover:bg-green-700"
+              }
+            >
+              Confirmar Alteração
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

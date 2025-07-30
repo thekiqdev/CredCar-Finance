@@ -87,10 +87,10 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
 
   const handleContractContentSubmit = (content: string) => {
     setContractContent(content);
-    createContract();
+    createContract(content);
   };
 
-  const createContract = async () => {
+  const createContract = async (contentToSave?: string) => {
     try {
       if (!clientData) {
         throw new Error("Dados do cliente não encontrados");
@@ -202,7 +202,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
             total_installments: 80, // 80 months
             paid_installments: 0,
             status: "Pendente",
-            contract_content: contractContent, // Save the HTML content
+            contract_content: contentToSave || contractContent, // Save the HTML content
           },
         ])
         .select("id")
