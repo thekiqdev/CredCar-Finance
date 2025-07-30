@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { authService } from "../../lib/supabase";
 import {
   Card,
   CardContent,
@@ -14,10 +15,9 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { signIn, getProfile } from "@/lib/supabase";
 
 interface LoginFormProps {
-  onLogin?: (user: any, profile: any) => void;
+  onLogin?: (email: string, password: string, role: string) => void;
 }
 
 const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
@@ -34,74 +34,85 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
     setIsLoading(true);
 
     try {
-      // Authenticate with Supabase
-      const { data: authData, error: authError } = await signIn(
-        email,
-        password,
-      );
+      if (role === "representative") {
+        // Authenticate representative
+        const representative = await authService.loginRepresentative(
+          email,
+          password,
+        );
 
-      if (authError) {
-        throw new Error(authError.message);
-      }
-
-      if (!authData.user) {
-        throw new Error("Falha na autenticação");
-      }
-
-      // Get user profile
-      const { data: profile, error: profileError } = await getProfile(
-        authData.user.id,
-      );
-
-      if (profileError || !profile) {
-        throw new Error("Perfil não encontrado");
-      }
-
-      // Check if the role matches what user selected
-      const userRole =
-        profile.role === "Administrador" || profile.role === "Suporte"
-          ? "administrator"
-          : "representative";
-
-      if (userRole !== role) {
-        throw new Error("Tipo de acesso incorreto para este usuário");
-      }
-
-      // Call the onLogin callback
-      await onLogin(authData.user, profile);
-
-      // Handle different user statuses and roles
-      if (profile.role === "Representante") {
-        if (profile.status === "Pendente de Aprovação") {
-          setError("Sua conta está pendente de aprovação pelo administrador.");
+        if (!representative) {
+          setError("Credenciais inválidas. Por favor, tente novamente.");
           setIsLoading(false);
           return;
         }
 
-        if (profile.status === "Documentos Pendentes") {
-          // First login after approval - redirect to document upload
-          navigate("/documentos");
+        // Check account status
+        if (representative.status === "Pendente de Aprovação") {
+          // Redirect to status page for pending approval users
+          authService.setCurrentUser(representative);
+          navigate("/status-cadastro");
           return;
         }
 
-        if (profile.status === "Ativo") {
-          navigate("/representante");
-        } else {
+        if (
+          representative.status === "Inativo" ||
+          representative.status === "Cancelado"
+        ) {
           setError(
-            `Conta ${profile.status.toLowerCase()}. Entre em contato com o administrador.`,
+            "Sua conta está inativa. Entre em contato com o administrador.",
           );
           setIsLoading(false);
           return;
         }
+
+        if (representative.status === "Documentos Pendentes") {
+          // Check if documents are actually approved in the database
+          const documentsApproved = await authService.checkDocumentsApproved(
+            representative.id,
+          );
+
+          if (documentsApproved) {
+            // Documents are approved, refresh user data and go to dashboard
+            const updatedUser = await authService.refreshUserData(
+              representative.id,
+            );
+            if (updatedUser) {
+              navigate("/representante");
+              return;
+            }
+          } else {
+            // Documents still pending - redirect to document upload
+            authService.setCurrentUser(representative);
+            navigate("/documentos");
+            return;
+          }
+        }
+
+        // If user status is "Ativo", go directly to dashboard
+        if (representative.status === "Ativo") {
+          authService.setCurrentUser(representative);
+          navigate("/representante");
+          return;
+        }
+
+        // Set user in localStorage and redirect to dashboard
+        authService.setCurrentUser(representative);
+        navigate("/representante");
       } else {
-        // Administrator or Support
-        navigate("/admindashboard");
+        // For admin login, use simple hardcoded check (in production, use proper authentication)
+        if (email === "admin@credicar.com" && password === "admin123") {
+          navigate("/admindashboard");
+        } else {
+          setError("Credenciais de administrador inválidas.");
+        }
       }
-    } catch (err: any) {
+
+      // Call the onLogin prop if provided
+      await onLogin(email, password, role);
+    } catch (err) {
       console.error("Login error:", err);
-      setError(
-        err.message || "Credenciais inválidas. Por favor, tente novamente.",
-      );
+      setError("Erro ao fazer login. Tente novamente.");
     } finally {
       setIsLoading(false);
     }

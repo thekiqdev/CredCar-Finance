@@ -1,5 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  representativeService,
+  Representative,
+  CreateRepresentativeData,
+  contractService,
+  supabase,
+} from "../../lib/supabase";
+import { Database } from "../../types/supabase";
 import {
   Card,
   CardContent,
@@ -51,6 +59,7 @@ import {
   Download,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowLeft,
   Edit,
   Eye,
   Mail,
@@ -64,14 +73,20 @@ import {
   XCircle,
   Filter,
   Trash2,
+  Group,
+  Hash,
+  UserCheck,
+  UserX,
+  Calculator,
 } from "lucide-react";
+import ContractCreationFlow from "@/components/sales/ContractCreationFlow";
+import ContractTemplateManagement from "@/components/sales/ContractTemplateManagement";
+import ContractDetails from "@/components/sales/ContractDetails";
 
 interface AdminDashboardProps {
   userName?: string;
   notifications?: number;
   onLogout?: () => void;
-  currentUser?: any;
-  currentProfile?: any;
 }
 
 interface Contract {
@@ -101,15 +116,67 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   userName = "Admin User",
   notifications = 5,
   onLogout = () => {},
-  currentUser,
-  currentProfile,
 }) => {
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("dashboard");
-  const [representatives, setRepresentatives] = useState([]);
+  const [activeConfigTab, setActiveConfigTab] = useState("commission-tables");
+  const [showContractFlow, setShowContractFlow] = useState(false);
+  const [contractFlowStep, setContractFlowStep] = useState<string>("");
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(
+    null,
+  );
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+
+  // Groups and Quotas state
+  const [groups, setGroups] = useState([]);
+  const [quotas, setQuotas] = useState([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
+  const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
+  const [isEditGroupDialogOpen, setIsEditGroupDialogOpen] = useState(false);
+  const [isManageQuotasDialogOpen, setIsManageQuotasDialogOpen] =
+    useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [editingGroup, setEditingGroup] = useState(null);
+  const [newGroup, setNewGroup] = useState({
+    name: "",
+    description: "",
+    totalQuotas: 10,
+  });
+  const [selectedQuota, setSelectedQuota] = useState(null);
+  const [isAssignQuotaDialogOpen, setIsAssignQuotaDialogOpen] = useState(false);
+  const [isNewRepDialogOpen, setIsNewRepDialogOpen] = useState(false);
+  const [isEditRepDialogOpen, setIsEditRepDialogOpen] = useState(false);
+  const [isDeleteRepDialogOpen, setIsDeleteRepDialogOpen] = useState(false);
+  const [editingRepresentative, setEditingRepresentative] =
+    useState<Representative | null>(null);
+  const [deletingRepresentative, setDeletingRepresentative] =
+    useState<Representative | null>(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [newRepresentative, setNewRepresentative] =
+    useState<CreateRepresentativeData>({
+      name: "",
+      email: "",
+      phone: "",
+      cnpj: "",
+      razao_social: "",
+      ponto_venda: "",
+      password: "",
+      status: "Ativo",
+      commission_table: "A",
+    });
+
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [isEarlyPaymentDialogOpen, setIsEarlyPaymentDialogOpen] =
+    useState(false);
+  const [selectedContract, setSelectedContract] = useState<Contract | null>(
+    null,
+  );
+  const [earlyPaymentInstallments, setEarlyPaymentInstallments] = useState("");
   const [contracts, setContracts] = useState<Contract[]>([
     {
-      id: "PV-2025-001-G1/15-01-2023",
+      id: "PV-2023-001",
       client: "João Silva",
       representative: "Carlos Oliveira",
       value: 45000,
@@ -118,42 +185,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       remainingValue: 38250,
       status: "Ativo",
       createdAt: "2023-01-15",
-      group: "G1",
-      quota: "Q001",
-      totalCredit: 45000,
-      totalPaid: 6750,
     },
     {
-      id: "PV-2025-002-G2/20-02-2023",
+      id: "PV-2023-002",
       client: "Maria Santos",
       representative: "Ana Pereira",
       value: 38500,
       installments: 80,
       paidInstallments: 8,
       remainingValue: 34650,
-      status: "Faturado",
+      status: "Ativo",
       createdAt: "2023-02-20",
-      group: "G2",
-      quota: "Q002",
-      totalCredit: 38500,
-      totalPaid: 3850,
     },
     {
-      id: "PV-2025-003-G1/10-01-2023",
+      id: "PV-2023-003",
       client: "Pedro Costa",
       representative: "Carlos Oliveira",
       value: 52000,
       installments: 80,
       paidInstallments: 15,
       remainingValue: 42250,
-      status: "Em Atraso",
+      status: "Ativo",
       createdAt: "2023-01-10",
-      group: "G1",
-      quota: "Q003",
-      totalCredit: 52000,
-      totalPaid: 9750,
     },
   ]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [commissionTables, setCommissionTables] = useState([
     {
       id: "A",
@@ -188,66 +244,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       activeContracts: 46,
     },
   ]);
-  const [isDataLoading, setIsDataLoading] = useState(true);
-  const [activeConfigTab, setActiveConfigTab] = useState("commission-tables");
-  const [isNewRepDialogOpen, setIsNewRepDialogOpen] = useState(false);
-  const [isEditRepDialogOpen, setIsEditRepDialogOpen] = useState(false);
-  const [isDeleteRepDialogOpen, setIsDeleteRepDialogOpen] = useState(false);
-  const [editingRepresentative, setEditingRepresentative] = useState(null);
-  const [deletingRepresentative, setDeletingRepresentative] = useState(null);
-  const [adminPassword, setAdminPassword] = useState("");
-  const [newRepresentative, setNewRepresentative] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    cnpj: "",
-    razaoSocial: "",
-    pontoVenda: "",
-    commissionCode: "",
-    password: "",
-    status: "active",
-  });
-  const [nextRepresentativeId, setNextRepresentativeId] = useState(6);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
-  const [isEarlyPaymentDialogOpen, setIsEarlyPaymentDialogOpen] =
-    useState(false);
-  const [selectedContract, setSelectedContract] = useState<Contract | null>(
-    null,
-  );
-  const [earlyPaymentInstallments, setEarlyPaymentInstallments] = useState("");
-
-  const [groups, setGroups] = useState([
-    {
-      id: "G1",
-      name: "Grupo Premium",
-      totalQuotas: 100,
-      occupiedQuotas: 45,
-      availableQuotas: 55,
-    },
-    {
-      id: "G2",
-      name: "Grupo Standard",
-      totalQuotas: 80,
-      occupiedQuotas: 32,
-      availableQuotas: 48,
-    },
-    {
-      id: "G3",
-      name: "Grupo Básico",
-      totalQuotas: 60,
-      occupiedQuotas: 18,
-      availableQuotas: 42,
-    },
-  ]);
-  const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
-  const [newGroup, setNewGroup] = useState({
-    name: "",
-    totalQuotas: 50,
-  });
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-
   const [withdrawalRequests, setWithdrawalRequests] = useState([
     {
       id: "WR-001",
@@ -256,7 +252,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       requestDate: "2023-06-20",
       status: "pending",
       availableBalance: 3200,
-      invoiceFile: "nota_fiscal_001.pdf",
     },
     {
       id: "WR-002",
@@ -265,7 +260,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       requestDate: "2023-06-21",
       status: "pending",
       availableBalance: 2100,
-      invoiceFile: "nf_ana_002.pdf",
     },
     {
       id: "WR-003",
@@ -274,12 +268,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       requestDate: "2023-06-19",
       status: "approved",
       availableBalance: 1500,
-      invoiceFile: "invoice_marcos.pdf",
     },
   ]);
-
-  const [selectedWithdrawalRequest, setSelectedWithdrawalRequest] =
-    useState(null);
   const [isNewTableDialogOpen, setIsNewTableDialogOpen] = useState(false);
   const [newTable, setNewTable] = useState({
     name: "",
@@ -319,45 +309,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isRepresentativeModalOpen, setIsRepresentativeModalOpen] =
     useState(false);
   const [selectedRepresentativeForModal, setSelectedRepresentativeForModal] =
-    useState(null);
-  const [pendingRegistrations, setPendingRegistrations] = useState([
-    {
-      id: 1,
-      name: "João Santos",
-      email: "joao.santos@email.com",
-      phone: "(11) 99999-0001",
-      cnpj: "12.345.678/0001-90",
-      razaoSocial: "Santos Veículos LTDA",
-      pontoVenda: "São Paulo - Centro",
-      requestDate: "2023-07-15",
-      status: "Pendente de Aprovação",
-    },
-    {
-      id: 2,
-      name: "Maria Oliveira",
-      email: "maria.oliveira@email.com",
-      phone: "(11) 99999-0002",
-      cnpj: "98.765.432/0001-10",
-      razaoSocial: "Oliveira Automóveis ME",
-      pontoVenda: "Rio de Janeiro - Zona Sul",
-      requestDate: "2023-07-14",
-      status: "Pendente de Aprovação",
-    },
-    {
-      id: 3,
-      name: "Carlos Pereira",
-      email: "carlos.pereira@email.com",
-      phone: "(11) 99999-0003",
-      cnpj: "11.222.333/0001-44",
-      razaoSocial: "Pereira Veículos EIRELI",
-      pontoVenda: "Belo Horizonte - Centro",
-      requestDate: "2023-07-13",
-      status: "Pendente de Aprovação",
-    },
-  ]);
+    useState<Representative | null>(null);
+  const [pendingRegistrations, setPendingRegistrations] = useState([]);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isRejectionDialogOpen, setIsRejectionDialogOpen] = useState(false);
-  const [selectedPendingRep, setSelectedPendingRep] = useState(null);
+  const [selectedPendingRep, setSelectedPendingRep] = useState<any>(null);
+  const [representativeDocuments, setRepresentativeDocuments] = useState<{
+    [key: string]: any[];
+  }>({});
+  const [isDocumentRejectionDialogOpen, setIsDocumentRejectionDialogOpen] =
+    useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<any>(null);
+  const [documentRejectionReason, setDocumentRejectionReason] = useState("");
   const [internalUsers, setInternalUsers] = useState([
     {
       id: 1,
@@ -384,38 +347,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     password: "",
   });
 
-  // Load data from Supabase
-  React.useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const { getRepresentatives, getContracts, getCommissionTables } =
-        await import("@/lib/supabase");
-
-      const [repsResult, contractsResult, tablesResult] = await Promise.all([
-        getRepresentatives(),
-        getContracts(),
-        getCommissionTables(),
-      ]);
-
-      if (repsResult.data) {
-        setRepresentatives(repsResult.data);
-      }
-      if (contractsResult.data) {
-        setContracts(contractsResult.data);
-      }
-      if (tablesResult.data) {
-        setCommissionTables(tablesResult.data);
-      }
-    } catch (error) {
-      console.error("Error loading data:", error);
-    } finally {
-      setIsDataLoading(false);
-    }
-  };
-
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState({
     asaasApiKey: "",
@@ -434,64 +365,289 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     encryption: "tls",
   });
 
-  // Mock data for representatives
-  const mockRepresentatives = [
-    {
-      id: 1,
-      name: "Carlos Oliveira",
-      email: "carlos@credicar.com",
-      phone: "(11) 99999-1234",
-      commissionTable: "A",
-      status: "Ativo",
-      totalSales: "R$ 425.000",
-      contractsCount: 28,
-      joinDate: "15/03/2023",
-    },
-    {
-      id: 2,
-      name: "Ana Pereira",
-      email: "ana@credicar.com",
-      phone: "(11) 99999-5678",
-      commissionTable: "B",
-      status: "Ativo",
-      totalSales: "R$ 360.000",
-      contractsCount: 24,
-      joinDate: "22/01/2023",
-    },
-    {
-      id: 3,
-      name: "Marcos Souza",
-      email: "marcos@credicar.com",
-      phone: "(11) 99999-9012",
-      commissionTable: "C",
-      status: "Ativo",
-      totalSales: "R$ 325.000",
-      contractsCount: 21,
-      joinDate: "08/05/2023",
-    },
-    {
-      id: 4,
-      name: "Juliana Costa",
-      email: "juliana@credicar.com",
-      phone: "(11) 99999-3456",
-      commissionTable: "A",
-      status: "Inativo",
-      totalSales: "R$ 290.000",
-      contractsCount: 19,
-      joinDate: "12/02/2023",
-    },
-    {
-      id: 5,
-      name: "Ricardo Gomes",
-      email: "ricardo@credicar.com",
-      phone: "(11) 99999-7890",
-      commissionTable: "D",
-      status: "Ativo",
-      totalSales: "R$ 225.000",
-      contractsCount: 15,
-      joinDate: "30/06/2023",
-    },
-  ];
+  // Representatives state
+  const [representatives, setRepresentatives] = useState<Representative[]>([]);
+  const [isLoadingRepresentatives, setIsLoadingRepresentatives] =
+    useState(true);
+  const [isLoadingPendingRegistrations, setIsLoadingPendingRegistrations] =
+    useState(true);
+
+  // Contracts state
+  const [allContracts, setAllContracts] = useState([]);
+  const [isLoadingContracts, setIsLoadingContracts] = useState(true);
+  const [contractsFilter, setContractsFilter] = useState("all");
+  const [contractsSearch, setContractsSearch] = useState("");
+
+  // Load representatives and pending registrations on component mount
+  useEffect(() => {
+    loadRepresentatives();
+    loadPendingRegistrations();
+    loadDocuments();
+    loadAllContracts();
+    loadGroups();
+  }, []);
+
+  const loadRepresentatives = async () => {
+    try {
+      setIsLoadingRepresentatives(true);
+      const data = await representativeService.getAll();
+      setRepresentatives(
+        data.filter((rep) => rep.status !== "Pendente de Aprovação"),
+      );
+    } catch (error) {
+      console.error("Error loading representatives:", error);
+    } finally {
+      setIsLoadingRepresentatives(false);
+    }
+  };
+
+  const loadPendingRegistrations = async () => {
+    try {
+      setIsLoadingPendingRegistrations(true);
+      const data = await representativeService.getPendingRegistrations();
+      setPendingRegistrations(data);
+    } catch (error) {
+      console.error("Error loading pending registrations:", error);
+    } finally {
+      setIsLoadingPendingRegistrations(false);
+    }
+  };
+
+  const loadDocuments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("documents")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error loading documents:", error);
+        return;
+      }
+
+      // Group documents by representative_id
+      const groupedDocs = (data || []).reduce(
+        (acc, doc) => {
+          if (doc.representative_id) {
+            if (!acc[doc.representative_id]) {
+              acc[doc.representative_id] = [];
+            }
+            acc[doc.representative_id].push(doc);
+          }
+          return acc;
+        },
+        {} as { [key: string]: any[] },
+      );
+
+      setRepresentativeDocuments(groupedDocs);
+    } catch (error) {
+      console.error("Error loading documents:", error);
+    }
+  };
+
+  const loadAllContracts = async () => {
+    try {
+      setIsLoadingContracts(true);
+      const data = await contractService.getAll();
+      setAllContracts(data);
+    } catch (error) {
+      console.error("Error loading contracts:", error);
+    } finally {
+      setIsLoadingContracts(false);
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      setIsLoadingGroups(true);
+      const { data: groupsData, error: groupsError } = await supabase
+        .from("groups")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (groupsError) {
+        console.error("Error loading groups:", groupsError);
+        return;
+      }
+
+      const { data: quotasData, error: quotasError } = await supabase
+        .from("quotas")
+        .select(
+          `
+          *,
+          profiles:representative_id(full_name)
+        `,
+        )
+        .order("quota_number", { ascending: true });
+
+      if (quotasError) {
+        console.error("Error loading quotas:", quotasError);
+        return;
+      }
+
+      setGroups(groupsData || []);
+      setQuotas(quotasData || []);
+    } catch (error) {
+      console.error("Error loading groups and quotas:", error);
+    } finally {
+      setIsLoadingGroups(false);
+    }
+  };
+
+  const handleApproveRepresentative = async (representative: any) => {
+    try {
+      await representativeService.update(representative.id, {
+        status: "Ativo",
+      });
+
+      // Refresh both lists
+      await loadRepresentatives();
+      await loadPendingRegistrations();
+
+      console.log("Representative approved:", representative.name);
+      alert("Representante aprovado com sucesso!");
+    } catch (error) {
+      console.error("Error approving representative:", error);
+      alert("Erro ao aprovar representante. Tente novamente.");
+    }
+  };
+
+  const handleRejectRepresentative = async () => {
+    if (!selectedPendingRep || !rejectionReason.trim()) {
+      alert("Por favor, informe o motivo da reprovação.");
+      return;
+    }
+
+    try {
+      // Update status to "Reprovado" and save rejection reason
+      await representativeService.update(selectedPendingRep.id, {
+        status: "Cancelado", // Using "Cancelado" as closest to "Reprovado"
+      });
+
+      // In a real implementation, you would also save the rejection reason
+      // This could be done by adding a rejection_reason field to the profiles table
+      // or creating a separate rejections table
+
+      console.log(
+        "Representative rejected:",
+        selectedPendingRep.name,
+        "Reason:",
+        rejectionReason,
+      );
+
+      // Refresh both lists
+      await loadRepresentatives();
+      await loadPendingRegistrations();
+
+      setIsRejectionDialogOpen(false);
+      setRejectionReason("");
+      setSelectedPendingRep(null);
+
+      alert("Representante reprovado com sucesso!");
+    } catch (error) {
+      console.error("Error rejecting representative:", error);
+      alert("Erro ao reprovar representante. Tente novamente.");
+    }
+  };
+
+  const handleApproveDocument = async (documentId: string) => {
+    try {
+      const { error } = await supabase
+        .from("documents")
+        .update({
+          status: "Aprovado",
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: "admin", // In a real app, this would be the current admin user ID
+        })
+        .eq("id", documentId);
+
+      if (error) {
+        console.error("Error approving document:", error);
+        alert("Erro ao aprovar documento. Tente novamente.");
+        return;
+      }
+
+      // Refresh documents
+      await loadDocuments();
+      console.log("Document approved:", documentId);
+    } catch (error) {
+      console.error("Error approving document:", error);
+      alert("Erro ao aprovar documento. Tente novamente.");
+    }
+  };
+
+  const handleRejectDocument = async () => {
+    if (!selectedDocument || !documentRejectionReason.trim()) {
+      alert("Por favor, informe o motivo da rejeição.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("documents")
+        .update({
+          status: "Reprovado",
+          rejection_reason: documentRejectionReason,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: "admin", // In a real app, this would be the current admin user ID
+        })
+        .eq("id", selectedDocument.id);
+
+      if (error) {
+        console.error("Error rejecting document:", error);
+        alert("Erro ao reprovar documento. Tente novamente.");
+        return;
+      }
+
+      // Refresh documents
+      await loadDocuments();
+
+      setIsDocumentRejectionDialogOpen(false);
+      setDocumentRejectionReason("");
+      setSelectedDocument(null);
+
+      console.log(
+        "Document rejected:",
+        selectedDocument.id,
+        "Reason:",
+        documentRejectionReason,
+      );
+    } catch (error) {
+      console.error("Error rejecting document:", error);
+      alert("Erro ao reprovar documento. Tente novamente.");
+    }
+  };
+
+  const handleContractFlowComplete = () => {
+    setShowContractFlow(false);
+    setContractFlowStep("");
+    setActiveSection("contracts");
+    // Refresh dashboard data after contract creation
+    loadAllContracts();
+  };
+
+  const handleContractFlowBack = () => {
+    setShowContractFlow(false);
+    setContractFlowStep("");
+    setActiveSection("contracts");
+  };
+
+  const handleViewContract = (contractId: string) => {
+    setSelectedContractId(contractId);
+    setIsContractModalOpen(true);
+  };
+
+  const handleEditContract = (contractId: string) => {
+    setSelectedContractId(contractId);
+    setIsContractModalOpen(true);
+  };
+
+  const handleCloseContractModal = () => {
+    setIsContractModalOpen(false);
+    setSelectedContractId(null);
+    // Refresh contracts data when modal closes
+    loadAllContracts();
+  };
 
   // Pagination calculations
   const totalPages = Math.ceil(representatives.length / itemsPerPage);
@@ -506,11 +662,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleItemsPerPageChange = (value: string) => {
     setItemsPerPage(parseInt(value));
     setCurrentPage(1); // Reset to first page when changing items per page
-  };
-
-  const generateCommissionCode = (representativeId: number) => {
-    const code = representativeId.toString().padStart(8, "0");
-    return code;
   };
 
   const formatCpfCnpj = (value: string) => {
@@ -545,57 +696,90 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setNewRepresentative({ ...newRepresentative, password });
   };
 
-  const handleCreateRepresentative = () => {
-    // Generate commission code based on the new representative ID
-    const commissionCode = generateCommissionCode(nextRepresentativeId);
-    const representativeWithCode = {
-      ...newRepresentative,
-      id: nextRepresentativeId,
-      commissionCode: commissionCode,
-    };
+  const handleCreateRepresentative = async () => {
+    try {
+      console.log("Creating representative with data:", newRepresentative);
 
-    console.log("Creating representative:", representativeWithCode);
+      // Validate required fields
+      if (!newRepresentative.name || !newRepresentative.email) {
+        alert("Nome e email são obrigatórios");
+        return;
+      }
 
-    // Increment the next ID for future representatives
-    setNextRepresentativeId(nextRepresentativeId + 1);
+      const newRep = await representativeService.create(newRepresentative);
+      console.log("Representative created successfully:", newRep);
 
-    setIsNewRepDialogOpen(false);
-    setNewRepresentative({
-      name: "",
-      email: "",
-      phone: "",
-      cnpj: "",
-      razaoSocial: "",
-      pontoVenda: "",
-      commissionCode: "",
-      password: "",
-      status: "active",
-    });
+      // Refresh the representatives list
+      await loadRepresentatives();
+
+      setIsNewRepDialogOpen(false);
+      setNewRepresentative({
+        name: "",
+        email: "",
+        phone: "",
+        cnpj: "",
+        razao_social: "",
+        ponto_venda: "",
+        password: "",
+        status: "Ativo",
+        commission_table: "A",
+      });
+      alert("Representante criado com sucesso!");
+    } catch (error) {
+      console.error("Error creating representative:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao criar representante: ${errorMessage}`);
+    }
   };
 
-  const handleEditRepresentative = (rep) => {
+  const handleEditRepresentative = (rep: Representative) => {
     setEditingRepresentative(rep);
     setIsEditRepDialogOpen(true);
   };
 
-  const handleUpdateRepresentative = () => {
-    console.log("Updating representative:", editingRepresentative);
-    setIsEditRepDialogOpen(false);
-    setEditingRepresentative(null);
+  const handleUpdateRepresentative = async () => {
+    if (!editingRepresentative) return;
+
+    try {
+      await representativeService.update(
+        editingRepresentative.id,
+        editingRepresentative,
+      );
+      console.log("Representative updated:", editingRepresentative);
+
+      // Refresh the representatives list
+      await loadRepresentatives();
+
+      setIsEditRepDialogOpen(false);
+      setEditingRepresentative(null);
+    } catch (error) {
+      console.error("Error updating representative:", error);
+      alert("Erro ao atualizar representante.");
+    }
   };
 
-  const handleDeleteRepresentative = (rep) => {
+  const handleDeleteRepresentative = (rep: Representative) => {
     setDeletingRepresentative(rep);
     setIsDeleteRepDialogOpen(true);
   };
 
-  const confirmDeleteRepresentative = () => {
-    if (adminPassword === "admin123") {
-      // In real app, validate against actual admin password
-      console.log("Deleting representative:", deletingRepresentative);
-      setIsDeleteRepDialogOpen(false);
-      setDeletingRepresentative(null);
-      setAdminPassword("");
+  const confirmDeleteRepresentative = async () => {
+    if (adminPassword === "admin123" && deletingRepresentative) {
+      try {
+        await representativeService.delete(deletingRepresentative.id);
+        console.log("Representative deleted:", deletingRepresentative);
+
+        // Refresh the representatives list
+        await loadRepresentatives();
+
+        setIsDeleteRepDialogOpen(false);
+        setDeletingRepresentative(null);
+        setAdminPassword("");
+      } catch (error) {
+        console.error("Error deleting representative:", error);
+        alert("Erro ao excluir representante.");
+      }
     } else {
       alert("Senha incorreta!");
     }
@@ -682,7 +866,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleWithdrawalAction = (
     requestId: string,
     action: "approve" | "reject",
-    reason?: string,
   ) => {
     setWithdrawalRequests((prev) =>
       prev.map((request) =>
@@ -690,46 +873,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ? {
               ...request,
               status: action === "approve" ? "approved" : "rejected",
-              rejectionReason: action === "reject" ? reason : undefined,
             }
           : request,
       ),
     );
-    console.log(
-      `Withdrawal request ${requestId} ${action}d`,
-      reason ? `Reason: ${reason}` : "",
-    );
-  };
-
-  const handleRejectWithReason = () => {
-    if (!selectedWithdrawalRequest || !rejectionReason.trim()) {
-      alert("Por favor, informe o motivo da reprovação");
-      return;
-    }
-
-    handleWithdrawalAction(
-      selectedWithdrawalRequest.id,
-      "reject",
-      rejectionReason,
-    );
-    setIsRejectionDialogOpen(false);
-    setRejectionReason("");
-    setSelectedWithdrawalRequest(null);
-  };
-
-  const handleCreateGroup = () => {
-    const groupId = `G${groups.length + 1}`;
-    const group = {
-      id: groupId,
-      name: newGroup.name,
-      totalQuotas: newGroup.totalQuotas,
-      occupiedQuotas: 0,
-      availableQuotas: newGroup.totalQuotas,
-    };
-    setGroups((prev) => [...prev, group]);
-    setIsNewGroupDialogOpen(false);
-    setNewGroup({ name: "", totalQuotas: 50 });
-    console.log("New group created:", group);
+    console.log(`Withdrawal request ${requestId} ${action}d`);
   };
 
   const handleCreateTable = () => {
@@ -843,6 +991,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>Novo Representante</span>
           </Button>
           <Button
+            className="h-auto py-4 flex flex-col items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white"
+            onClick={() => {
+              setShowContractFlow(true);
+              setActiveSection("contract-creation");
+            }}
+          >
+            <Calculator className="h-6 w-6" />
+            <span>Criar Contrato</span>
+          </Button>
+          <Button
             className="h-auto py-4 flex flex-col items-center justify-center gap-2"
             variant="outline"
             onClick={() => setActiveSection("contracts")}
@@ -857,13 +1015,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Settings className="h-6 w-6" />
             <span>Configurações</span>
-          </Button>
-          <Button
-            className="h-auto py-4 flex flex-col items-center justify-center gap-2"
-            variant="outline"
-          >
-            <Bell className="h-6 w-6" />
-            <span>Notificações</span>
           </Button>
         </div>
       </div>
@@ -1023,6 +1174,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </>
   );
 
+  // Error boundary check
+  if (!navigate) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            Erro de Configuração
+          </h2>
+          <p className="text-gray-600">
+            O componente precisa estar dentro de um Router context.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
@@ -1100,6 +1267,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="space-y-1">
             <Button
+              variant={
+                activeSection === "contract-templates" ? "default" : "ghost"
+              }
+              className="w-full justify-start"
+              onClick={() => setActiveSection("contract-templates")}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Modelos de Contrato
+            </Button>
+            <Button
               variant={activeSection === "settings" ? "default" : "ghost"}
               className="w-full justify-start"
               onClick={() => setActiveSection("settings")}
@@ -1140,27 +1317,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </Button>
               <div className="flex items-center">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${userName}`}
-                  />
-                  <AvatarFallback>
-                    {userName
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
+                  <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=admin" />
+                  <AvatarFallback>AU</AvatarFallback>
                 </Avatar>
                 <div className="ml-2 hidden md:block">
                   <p className="text-sm font-medium">{userName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {currentProfile?.role || "Administrador"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Administrador</p>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={onLogout}
-                  className="ml-2"
+                  className="ml-2 text-muted-foreground hover:text-foreground"
                 >
                   Sair
                 </Button>
@@ -1183,15 +1351,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </>
           )}
 
+          {activeSection === "contract-creation" && showContractFlow && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Criar Novo Contrato
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Siga os passos para criar um novo contrato no sistema.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleContractFlowBack}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Voltar para Contratos
+                </Button>
+              </div>
+              <div className="bg-white rounded-lg border">
+                <ContractCreationFlow
+                  onComplete={handleContractFlowComplete}
+                  isAdminMode={true}
+                />
+              </div>
+            </div>
+          )}
+
           {activeSection === "representatives" && (
-            <>
-              <div className="mb-6 flex items-center justify-between">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight">
                     Representantes
                   </h1>
                   <p className="text-muted-foreground">
-                    Gerencie os representantes de vendas e seus perfis.
+                    Gerencie os representantes de vendas do sistema.
                   </p>
                 </div>
                 <Dialog
@@ -1199,429 +1396,172 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onOpenChange={setIsNewRepDialogOpen}
                 >
                   <DialogTrigger asChild>
-                    <Button>
+                    <Button className="bg-red-600 hover:bg-red-700">
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Novo Representante
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+                  <DialogContent className="sm:max-w-[600px]">
                     <DialogHeader>
-                      <DialogTitle>Cadastrar Novo Representante</DialogTitle>
+                      <DialogTitle>Criar Novo Representante</DialogTitle>
                       <DialogDescription>
                         Preencha os dados do novo representante de vendas.
                       </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="name" className="text-right">
-                          Nome Completo *
-                        </Label>
-                        <Input
-                          id="name"
-                          value={newRepresentative.name}
-                          onChange={(e) =>
-                            setNewRepresentative({
-                              ...newRepresentative,
-                              name: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="Nome completo"
-                          required
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="email" className="text-right">
-                          Email *
-                        </Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          value={newRepresentative.email}
-                          onChange={(e) =>
-                            setNewRepresentative({
-                              ...newRepresentative,
-                              email: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="email@exemplo.com"
-                          required
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="phone" className="text-right">
-                          Telefone
-                        </Label>
-                        <Input
-                          id="phone"
-                          value={newRepresentative.phone}
-                          onChange={(e) =>
-                            setNewRepresentative({
-                              ...newRepresentative,
-                              phone: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="(11) 99999-9999"
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="cnpj" className="text-right">
-                          CPF/CNPJ
-                        </Label>
-                        <Input
-                          id="cnpj"
-                          value={newRepresentative.cnpj}
-                          onChange={(e) => {
-                            const formatted = formatCpfCnpj(e.target.value);
-                            setNewRepresentative({
-                              ...newRepresentative,
-                              cnpj: formatted,
-                            });
-                          }}
-                          className="col-span-3"
-                          placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                          maxLength={18}
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="razaoSocial" className="text-right">
-                          Razão Social
-                        </Label>
-                        <Input
-                          id="razaoSocial"
-                          value={newRepresentative.razaoSocial}
-                          onChange={(e) =>
-                            setNewRepresentative({
-                              ...newRepresentative,
-                              razaoSocial: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="Razão social da empresa"
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="pontoVenda" className="text-right">
-                          Ponto de Venda
-                        </Label>
-                        <Input
-                          id="pontoVenda"
-                          value={newRepresentative.pontoVenda}
-                          onChange={(e) =>
-                            setNewRepresentative({
-                              ...newRepresentative,
-                              pontoVenda: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="Localização do ponto de venda"
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="commissionCode" className="text-right">
-                          Código da Comissão
-                        </Label>
-                        <div className="col-span-3">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="name">Nome Completo *</Label>
                           <Input
-                            id="commissionCode"
-                            value="Será gerado após o cadastro"
-                            className="flex-1"
-                            placeholder="Gerado automaticamente após cadastro"
-                            readOnly
-                            disabled
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            O código será o ID do representante com 8 dígitos
-                          </p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="password" className="text-right">
-                          Senha
-                        </Label>
-                        <div className="col-span-3 flex gap-2">
-                          <Input
-                            id="password"
-                            type="text"
-                            value={newRepresentative.password}
+                            id="name"
+                            value={newRepresentative.name}
                             onChange={(e) =>
                               setNewRepresentative({
                                 ...newRepresentative,
-                                password: e.target.value,
+                                name: e.target.value,
                               })
                             }
-                            className="flex-1"
-                            placeholder="Digite ou gere uma senha"
+                            placeholder="Nome completo"
                           />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={generatePassword}
+                        </div>
+                        <div>
+                          <Label htmlFor="email">Email *</Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={newRepresentative.email}
+                            onChange={(e) =>
+                              setNewRepresentative({
+                                ...newRepresentative,
+                                email: e.target.value,
+                              })
+                            }
+                            placeholder="email@exemplo.com"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="phone">Telefone</Label>
+                          <Input
+                            id="phone"
+                            value={newRepresentative.phone}
+                            onChange={(e) =>
+                              setNewRepresentative({
+                                ...newRepresentative,
+                                phone: e.target.value,
+                              })
+                            }
+                            placeholder="(11) 99999-9999"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="cnpj">CNPJ</Label>
+                          <Input
+                            id="cnpj"
+                            value={formatCpfCnpj(newRepresentative.cnpj || "")}
+                            onChange={(e) =>
+                              setNewRepresentative({
+                                ...newRepresentative,
+                                cnpj: e.target.value,
+                              })
+                            }
+                            placeholder="00.000.000/0000-00"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="razao_social">Razão Social</Label>
+                          <Input
+                            id="razao_social"
+                            value={newRepresentative.razao_social}
+                            onChange={(e) =>
+                              setNewRepresentative({
+                                ...newRepresentative,
+                                razao_social: e.target.value,
+                              })
+                            }
+                            placeholder="Nome da empresa"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="ponto_venda">Ponto de Venda</Label>
+                          <Input
+                            id="ponto_venda"
+                            value={newRepresentative.ponto_venda}
+                            onChange={(e) =>
+                              setNewRepresentative({
+                                ...newRepresentative,
+                                ponto_venda: e.target.value,
+                              })
+                            }
+                            placeholder="Local de vendas"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="password">Senha</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="password"
+                              type="password"
+                              value={newRepresentative.password}
+                              onChange={(e) =>
+                                setNewRepresentative({
+                                  ...newRepresentative,
+                                  password: e.target.value,
+                                })
+                              }
+                              placeholder="Senha do usuário"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={generatePassword}
+                            >
+                              Gerar
+                            </Button>
+                          </div>
+                        </div>
+                        <div>
+                          <Label htmlFor="status">Status</Label>
+                          <Select
+                            value={newRepresentative.status}
+                            onValueChange={(value) =>
+                              setNewRepresentative({
+                                ...newRepresentative,
+                                status: value as any,
+                              })
+                            }
                           >
-                            Gerar Senha
-                          </Button>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Ativo">Ativo</SelectItem>
+                              <SelectItem value="Inativo">Inativo</SelectItem>
+                              <SelectItem value="Pendente de Aprovação">
+                                Pendente de Aprovação
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </div>
                     <DialogFooter>
                       <Button
-                        type="submit"
+                        variant="outline"
+                        onClick={() => setIsNewRepDialogOpen(false)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
                         onClick={handleCreateRepresentative}
+                        className="bg-red-600 hover:bg-red-700"
                       >
-                        Cadastrar
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-
-                {/* Edit Representative Dialog */}
-                <Dialog
-                  open={isEditRepDialogOpen}
-                  onOpenChange={setIsEditRepDialogOpen}
-                >
-                  <DialogContent className="sm:max-w-[600px]">
-                    <DialogHeader>
-                      <DialogTitle>Editar Representante</DialogTitle>
-                      <DialogDescription>
-                        Edite os dados do representante selecionado.
-                      </DialogDescription>
-                    </DialogHeader>
-                    {editingRepresentative && (
-                      <div className="grid gap-4 py-4 max-h-96 overflow-y-auto">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="editName" className="text-right">
-                            Nome Completo *
-                          </Label>
-                          <Input
-                            id="editName"
-                            value={editingRepresentative.name}
-                            onChange={(e) =>
-                              setEditingRepresentative({
-                                ...editingRepresentative,
-                                name: e.target.value,
-                              })
-                            }
-                            className="col-span-3"
-                            placeholder="Nome completo"
-                            required
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="editEmail" className="text-right">
-                            Email *
-                          </Label>
-                          <Input
-                            id="editEmail"
-                            type="email"
-                            value={editingRepresentative.email}
-                            onChange={(e) =>
-                              setEditingRepresentative({
-                                ...editingRepresentative,
-                                email: e.target.value,
-                              })
-                            }
-                            className="col-span-3"
-                            placeholder="email@exemplo.com"
-                            required
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="editPhone" className="text-right">
-                            Telefone
-                          </Label>
-                          <Input
-                            id="editPhone"
-                            value={editingRepresentative.phone}
-                            onChange={(e) =>
-                              setEditingRepresentative({
-                                ...editingRepresentative,
-                                phone: e.target.value,
-                              })
-                            }
-                            className="col-span-3"
-                            placeholder="(11) 99999-9999"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="editCnpj" className="text-right">
-                            CPF/CNPJ
-                          </Label>
-                          <Input
-                            id="editCnpj"
-                            value={
-                              editingRepresentative.cnpj || "123.456.789-00"
-                            }
-                            className="col-span-3"
-                            placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                            readOnly
-                            disabled
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label
-                            htmlFor="editRazaoSocial"
-                            className="text-right"
-                          >
-                            Razão Social
-                          </Label>
-                          <Input
-                            id="editRazaoSocial"
-                            value={editingRepresentative.razaoSocial || ""}
-                            onChange={(e) =>
-                              setEditingRepresentative({
-                                ...editingRepresentative,
-                                razaoSocial: e.target.value,
-                              })
-                            }
-                            className="col-span-3"
-                            placeholder="Razão social da empresa"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label
-                            htmlFor="editPontoVenda"
-                            className="text-right"
-                          >
-                            Ponto de Venda
-                          </Label>
-                          <Input
-                            id="editPontoVenda"
-                            value={editingRepresentative.pontoVenda || ""}
-                            onChange={(e) =>
-                              setEditingRepresentative({
-                                ...editingRepresentative,
-                                pontoVenda: e.target.value,
-                              })
-                            }
-                            className="col-span-3"
-                            placeholder="Localização do ponto de venda"
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label
-                            htmlFor="editCommissionCode"
-                            className="text-right"
-                          >
-                            Código da Comissão
-                          </Label>
-                          <Input
-                            id="editCommissionCode"
-                            value={
-                              editingRepresentative.id
-                                ?.toString()
-                                .padStart(8, "0") || "00000000"
-                            }
-                            className="col-span-3"
-                            placeholder="Código gerado automaticamente"
-                            readOnly
-                            disabled
-                          />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="editStatus" className="text-right">
-                            Status
-                          </Label>
-                          <Select
-                            value={editingRepresentative.status}
-                            onValueChange={(value) =>
-                              setEditingRepresentative({
-                                ...editingRepresentative,
-                                status: value,
-                              })
-                            }
-                          >
-                            <SelectTrigger className="col-span-3">
-                              <SelectValue placeholder="Selecione o status" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Ativo">Ativa</SelectItem>
-                              <SelectItem value="Cancelada">
-                                Cancelada
-                              </SelectItem>
-                              <SelectItem value="Pausada">Pausada</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    )}
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => setIsEditRepDialogOpen(false)}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        type="submit"
-                        onClick={handleUpdateRepresentative}
-                      >
-                        Salvar Alterações
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-
-                {/* Delete Representative Dialog */}
-                <Dialog
-                  open={isDeleteRepDialogOpen}
-                  onOpenChange={setIsDeleteRepDialogOpen}
-                >
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Confirmar Exclusão</DialogTitle>
-                      <DialogDescription>
-                        Esta ação não pode ser desfeita. Para confirmar a
-                        exclusão do representante, digite sua senha de
-                        administrador.
-                      </DialogDescription>
-                    </DialogHeader>
-                    {deletingRepresentative && (
-                      <div className="space-y-4">
-                        <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                          <h4 className="font-medium text-red-800">
-                            {deletingRepresentative.name}
-                          </h4>
-                          <p className="text-sm text-red-600">
-                            ID:{" "}
-                            {deletingRepresentative.id
-                              .toString()
-                              .padStart(3, "0")}{" "}
-                            | {deletingRepresentative.email}
-                          </p>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="adminPassword" className="text-right">
-                            Senha Admin
-                          </Label>
-                          <Input
-                            id="adminPassword"
-                            type="password"
-                            value={adminPassword}
-                            onChange={(e) => setAdminPassword(e.target.value)}
-                            className="col-span-3"
-                            placeholder="Digite sua senha de administrador"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    <DialogFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setIsDeleteRepDialogOpen(false);
-                          setAdminPassword("");
-                        }}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        onClick={confirmDeleteRepresentative}
-                        disabled={!adminPassword}
-                      >
-                        Confirmar Exclusão
+                        Criar Representante
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -1631,2300 +1571,326 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Representatives Table */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Lista de Representantes</CardTitle>
-                      <CardDescription>
-                        {representatives.length} representantes cadastrados no
-                        sistema
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Label
-                        htmlFor="itemsPerPage"
-                        className="text-sm font-medium"
-                      >
-                        Itens por página:
-                      </Label>
-                      <Select
-                        value={itemsPerPage.toString()}
-                        onValueChange={handleItemsPerPageChange}
-                      >
-                        <SelectTrigger className="w-20">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="10">10</SelectItem>
-                          <SelectItem value="20">20</SelectItem>
-                          <SelectItem value="30">30</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                  <CardTitle>Lista de Representantes</CardTitle>
+                  <CardDescription>
+                    {representatives.length} representantes cadastrados no
+                    sistema
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Representante</TableHead>
-                        <TableHead>Contato</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Vendas Totais</TableHead>
-                        <TableHead>Contratos</TableHead>
-                        <TableHead>Data de Cadastro</TableHead>
-                        <TableHead>Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paginatedRepresentatives.map((rep) => (
-                        <TableRow key={rep.id}>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <Avatar className="h-8 w-8 mr-3">
-                                <AvatarImage
-                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${rep.name}`}
-                                />
-                                <AvatarFallback>
-                                  {rep.name
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="font-medium">{rep.name}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  ID: {rep.id.toString().padStart(3, "0")}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="space-y-1">
-                              <div className="flex items-center text-sm">
-                                <Mail className="mr-1 h-3 w-3" />
-                                {rep.email}
-                              </div>
-                              <div className="flex items-center text-sm text-muted-foreground">
-                                <Phone className="mr-1 h-3 w-3" />
-                                {rep.phone}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                rep.status === "Ativo" ? "default" : "secondary"
-                              }
-                            >
-                              {rep.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {rep.totalSales}
-                          </TableCell>
-                          <TableCell>{rep.contractsCount} contratos</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {rep.joinDate}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() =>
-                                  navigate(`/representative/${rep.id}`)
-                                }
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditRepresentative(rep)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteRepresentative(rep)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-
-                  {/* Pagination Controls */}
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between mt-4">
-                      <div className="text-sm text-muted-foreground">
-                        Mostrando {startIndex + 1} a{" "}
-                        {Math.min(endIndex, representatives.length)} de{" "}
-                        {representatives.length} representantes
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePageChange(currentPage - 1)}
-                          disabled={currentPage === 1}
-                        >
-                          Anterior
-                        </Button>
-                        {Array.from(
-                          { length: totalPages },
-                          (_, i) => i + 1,
-                        ).map((page) => (
-                          <Button
-                            key={page}
-                            variant={
-                              currentPage === page ? "default" : "outline"
-                            }
-                            size="sm"
-                            onClick={() => handlePageChange(page)}
-                          >
-                            {page}
-                          </Button>
-                        ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePageChange(currentPage + 1)}
-                          disabled={currentPage === totalPages}
-                        >
-                          Próxima
-                        </Button>
-                      </div>
+                  {isLoadingRepresentatives ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Pending Registration Requests */}
-              {pendingRegistrations.length > 0 && (
-                <Card className="mt-6">
-                  <CardHeader>
-                    <CardTitle>Solicitações de Cadastro Pendentes</CardTitle>
-                    <CardDescription>
-                      {pendingRegistrations.length} solicitações aguardando
-                      aprovação
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {pendingRegistrations.map((request) => (
-                        <div
-                          key={request.id}
-                          className="flex items-center justify-between p-4 border rounded-lg bg-yellow-50 border-yellow-200"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h4 className="font-medium">{request.name}</h4>
-                              <Badge
-                                variant="outline"
-                                className="bg-yellow-100 text-yellow-800"
-                              >
-                                {request.status}
-                              </Badge>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <p className="text-muted-foreground">Email</p>
-                                <p className="font-medium">{request.email}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">
-                                  Telefone
-                                </p>
-                                <p className="font-medium">{request.phone}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">CNPJ</p>
-                                <p className="font-medium">{request.cnpj}</p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">
-                                  Razão Social
-                                </p>
-                                <p className="font-medium">
-                                  {request.razaoSocial}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">
-                                  Ponto de Venda
-                                </p>
-                                <p className="font-medium">
-                                  {request.pontoVenda}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-muted-foreground">
-                                  Data da Solicitação
-                                </p>
-                                <p className="font-medium">
-                                  {new Date(
-                                    request.requestDate,
-                                  ).toLocaleDateString("pt-BR")}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                // Approve registration
-                                const newRep = {
-                                  id: nextRepresentativeId,
-                                  name: request.name,
-                                  email: request.email,
-                                  phone: request.phone,
-                                  commissionTable: "A",
-                                  status: "Ativo",
-                                  totalSales: "R$ 0",
-                                  contractsCount: 0,
-                                  joinDate: new Date().toLocaleDateString(
-                                    "pt-BR",
-                                  ),
-                                  cnpj: request.cnpj,
-                                  razaoSocial: request.razaoSocial,
-                                  pontoVenda: request.pontoVenda,
-                                };
-
-                                // Add to representatives list
-                                representatives.push(newRep);
-                                setNextRepresentativeId(
-                                  nextRepresentativeId + 1,
-                                );
-
-                                // Remove from pending
-                                setPendingRegistrations((prev) =>
-                                  prev.filter((p) => p.id !== request.id),
-                                );
-
-                                console.log("Registration approved:", newRep);
-                              }}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="mr-1 h-3 w-3" />
-                              Aprovar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                setSelectedPendingRep(request);
-                                setIsRejectionDialogOpen(true);
-                              }}
-                            >
-                              <XCircle className="mr-1 h-3 w-3" />
-                              Reprovar
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Representatives Stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Total de Representantes
-                    </CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {representatives.length}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {
-                        representatives.filter((r) => r.status === "Ativo")
-                          .length
-                      }{" "}
-                      ativos
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Vendas Médias
-                    </CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">R$ 325.000</div>
-                    <p className="text-xs text-muted-foreground">
-                      Por representante ativo
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Contratos Médios
-                    </CardTitle>
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">21</div>
-                    <p className="text-xs text-muted-foreground">
-                      Contratos por representante
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Pendentes de Aprovação
-                    </CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {pendingRegistrations.length}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Solicitações aguardando
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
-
-          {activeSection === "contracts" && (
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold tracking-tight">Contratos</h1>
-              <p className="text-muted-foreground">
-                Gerencie todos os contratos do sistema.
-              </p>
-              <div className="mt-8 text-center text-muted-foreground">
-                Seção em desenvolvimento...
-              </div>
-            </div>
-          )}
-
-          {activeSection === "settings" && (
-            <>
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold tracking-tight">
-                  Configurações
-                </h1>
-                <p className="text-muted-foreground">
-                  Gerencie as configurações gerais, integrações e
-                  personalizações do sistema.
-                </p>
-              </div>
-
-              {/* Configuration Tabs */}
-              <Tabs value={activeConfigTab} onValueChange={setActiveConfigTab}>
-                <TabsList className="mb-6">
-                  <TabsTrigger value="commission-tables">
-                    Tabelas de Comissão
-                  </TabsTrigger>
-                  <TabsTrigger value="groups-quotas">
-                    Grupos e Cotas
-                  </TabsTrigger>
-                  <TabsTrigger value="payments">Pagamentos (Asaas)</TabsTrigger>
-                  <TabsTrigger value="email">Configuração de Email</TabsTrigger>
-                </TabsList>
-
-                {/* Commission Tables Tab */}
-                <TabsContent value="commission-tables">
-                  <div className="mb-6 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold">
-                        Tabelas de Comissão
-                      </h2>
-                      <p className="text-muted-foreground">
-                        Gerencie as tabelas de comissão disponíveis no sistema
-                      </p>
-                    </div>
-                    <Dialog
-                      open={isNewTableDialogOpen}
-                      onOpenChange={setIsNewTableDialogOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button>
-                          <PlusCircle className="mr-2 h-4 w-4" />
-                          Nova Tabela
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[425px]">
-                        <DialogHeader>
-                          <DialogTitle>
-                            Criar Nova Tabela de Comissão
-                          </DialogTitle>
-                          <DialogDescription>
-                            Configure uma nova tabela de comissão para o
-                            sistema.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="tableName" className="text-right">
-                              Nome
-                            </Label>
-                            <Input
-                              id="tableName"
-                              value={newTable.name}
-                              onChange={(e) =>
-                                setNewTable({
-                                  ...newTable,
-                                  name: e.target.value,
-                                })
-                              }
-                              className="col-span-3"
-                              placeholder="Nome da tabela"
-                            />
-                          </div>
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="percentage" className="text-right">
-                              Percentual
-                            </Label>
-                            <Input
-                              id="percentage"
-                              type="number"
-                              value={newTable.percentage}
-                              onChange={(e) =>
-                                setNewTable({
-                                  ...newTable,
-                                  percentage: parseFloat(e.target.value) || 0,
-                                })
-                              }
-                              className="col-span-3"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                            />
-                          </div>
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label
-                              htmlFor="installments"
-                              className="text-right"
-                            >
-                              Parcelas
-                            </Label>
-                            <Input
-                              id="installments"
-                              type="number"
-                              value={newTable.installments}
-                              onChange={(e) =>
-                                setNewTable({
-                                  ...newTable,
-                                  installments: parseInt(e.target.value) || 1,
-                                })
-                              }
-                              className="col-span-3"
-                              min="1"
-                              max="12"
-                            />
-                          </div>
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="description" className="text-right">
-                              Descrição
-                            </Label>
-                            <Input
-                              id="description"
-                              value={newTable.description}
-                              onChange={(e) =>
-                                setNewTable({
-                                  ...newTable,
-                                  description: e.target.value,
-                                })
-                              }
-                              className="col-span-3"
-                              placeholder="Descrição da tabela"
-                            />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button type="submit" onClick={handleCreateTable}>
-                            Criar Tabela
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Tabelas de Comissão</CardTitle>
-                      <CardDescription>
-                        Gerencie as tabelas de comissão disponíveis no sistema
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {commissionTables.map((table) => (
-                          <div
-                            key={table.id}
-                            className="flex items-center justify-between p-4 border rounded-lg"
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <Badge variant="outline">
-                                  Tabela {table.id}
-                                </Badge>
-                                <h4 className="font-medium">{table.name}</h4>
-                              </div>
-                              <p className="text-sm text-muted-foreground mb-1">
-                                {table.description}
-                              </p>
-                              <div className="flex items-center gap-4 text-sm">
-                                <span>
-                                  <strong>Percentual:</strong>{" "}
-                                  {table.percentage}%
-                                </span>
-                                <span>
-                                  <strong>Parcelas:</strong>{" "}
-                                  {table.installments}
-                                </span>
-                                <span>
-                                  <strong>Contratos Ativos:</strong>{" "}
-                                  {table.activeContracts}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button variant="ghost" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteTable(table.id)}
-                                disabled={table.activeContracts > 0}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                {/* Groups and Quotas Tab */}
-                <TabsContent value="groups-quotas">
-                  <div className="mb-6 flex items-center justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold">Grupos e Cotas</h2>
-                      <p className="text-muted-foreground">
-                        Gerencie os grupos de contratos e suas cotas disponíveis
-                      </p>
-                    </div>
-                    <Dialog
-                      open={isNewGroupDialogOpen}
-                      onOpenChange={setIsNewGroupDialogOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button>
-                          <PlusCircle className="mr-2 h-4 w-4" />
-                          Novo Grupo
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[425px]">
-                        <DialogHeader>
-                          <DialogTitle>Criar Novo Grupo</DialogTitle>
-                          <DialogDescription>
-                            Configure um novo grupo de contratos.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="groupName" className="text-right">
-                              Nome
-                            </Label>
-                            <Input
-                              id="groupName"
-                              value={newGroup.name}
-                              onChange={(e) =>
-                                setNewGroup({
-                                  ...newGroup,
-                                  name: e.target.value,
-                                })
-                              }
-                              className="col-span-3"
-                              placeholder="Nome do grupo"
-                            />
-                          </div>
-                          <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="totalQuotas" className="text-right">
-                              Total de Cotas
-                            </Label>
-                            <Input
-                              id="totalQuotas"
-                              type="number"
-                              value={newGroup.totalQuotas}
-                              onChange={(e) =>
-                                setNewGroup({
-                                  ...newGroup,
-                                  totalQuotas: parseInt(e.target.value) || 0,
-                                })
-                              }
-                              className="col-span-3"
-                              min="1"
-                              max="1000"
-                            />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button type="submit" onClick={handleCreateGroup}>
-                            Criar Grupo
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Lista de Grupos</CardTitle>
-                      <CardDescription>
-                        Gerencie os grupos de contratos e o status das cotas
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {groups.map((group) => (
-                          <div
-                            key={group.id}
-                            className="flex items-center justify-between p-4 border rounded-lg"
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <Badge variant="outline">{group.id}</Badge>
-                                <h4 className="font-medium">{group.name}</h4>
-                              </div>
-                              <div className="grid grid-cols-3 gap-4 text-sm">
-                                <div>
-                                  <span className="text-muted-foreground">
-                                    Total de Cotas:
-                                  </span>
-                                  <p className="font-medium">
-                                    {group.totalQuotas}
-                                  </p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">
-                                    Ocupadas:
-                                  </span>
-                                  <p className="font-medium text-red-600">
-                                    {group.occupiedQuotas}
-                                  </p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">
-                                    Disponíveis:
-                                  </span>
-                                  <p className="font-medium text-green-600">
-                                    {group.availableQuotas}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="mt-2">
-                                <Progress
-                                  value={
-                                    (group.occupiedQuotas / group.totalQuotas) *
-                                    100
+                  ) : (
+                    <>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Telefone</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Código</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedRepresentatives.map((rep) => (
+                            <TableRow key={rep.id}>
+                              <TableCell className="font-medium">
+                                {rep.name}
+                              </TableCell>
+                              <TableCell>{rep.email}</TableCell>
+                              <TableCell>{rep.phone || "-"}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    rep.status === "Ativo"
+                                      ? "default"
+                                      : rep.status === "Inativo"
+                                        ? "destructive"
+                                        : "secondary"
                                   }
-                                  className="h-2"
-                                />
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {Math.round(
-                                    (group.occupiedQuotas / group.totalQuotas) *
-                                      100,
-                                  )}
-                                  % ocupado
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 ml-4">
-                              <Button variant="ghost" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={group.occupiedQuotas > 0}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                                >
+                                  {rep.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {rep.commission_code || "-"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleEditRepresentative(rep)
+                                    }
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedRepresentativeForModal(rep);
+                                      setIsRepresentativeModalOpen(true);
+                                    }}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleDeleteRepresentative(rep)
+                                    }
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
 
-                {/* Payments Tab */}
-                <TabsContent value="payments">
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-semibold mb-2">
-                        Configuração de Pagamentos
-                      </h2>
-                      <p className="text-muted-foreground">
-                        Integre sua conta do gateway de pagamentos Asaas para
-                        automatizar a geração de faturas e cobranças.
-                      </p>
-                    </div>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Credenciais da API Asaas</CardTitle>
-                        <CardDescription>
-                          Configure sua chave de API para integração com o Asaas
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="asaasApiKey">
-                            Chave da API (API Key)
-                          </Label>
-                          <Input
-                            id="asaasApiKey"
-                            type="password"
-                            value={paymentSettings.asaasApiKey}
-                            onChange={(e) =>
-                              setPaymentSettings({
-                                ...paymentSettings,
-                                asaasApiKey: e.target.value,
-                              })
-                            }
-                            placeholder="Insira sua chave da API do Asaas"
-                          />
+                      {/* Pagination */}
+                      <div className="flex items-center justify-between mt-4">
+                        <div className="flex items-center space-x-2">
                           <p className="text-sm text-muted-foreground">
-                            <a
-                              href="#"
-                              className="text-blue-600 hover:underline"
-                            >
-                              Como encontrar minha chave da API no Asaas?
-                            </a>
+                            Mostrando {startIndex + 1} a{" "}
+                            {Math.min(endIndex, representatives.length)} de{" "}
+                            {representatives.length} representantes
                           </p>
-                        </div>
-                        <Button variant="outline">Verificar Conexão</Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Configurações de Fatura</CardTitle>
-                        <CardDescription>
-                          Configure as opções de geração e vencimento de faturas
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id="autoGenerateBoletos"
-                            checked={paymentSettings.autoGenerateBoletos}
-                            onChange={(e) =>
-                              setPaymentSettings({
-                                ...paymentSettings,
-                                autoGenerateBoletos: e.target.checked,
-                              })
-                            }
-                            className="rounded"
-                          />
-                          <Label htmlFor="autoGenerateBoletos">
-                            Ativar geração automática de boletos
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            id="enablePix"
-                            checked={paymentSettings.enablePix}
-                            onChange={(e) =>
-                              setPaymentSettings({
-                                ...paymentSettings,
-                                enablePix: e.target.checked,
-                              })
-                            }
-                            className="rounded"
-                          />
-                          <Label htmlFor="enablePix">
-                            Ativar PIX como forma de pagamento
-                          </Label>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="defaultDueDays">
-                            Dias para vencimento padrão da fatura
-                          </Label>
-                          <Input
-                            id="defaultDueDays"
-                            type="number"
-                            value={paymentSettings.defaultDueDays}
-                            onChange={(e) =>
-                              setPaymentSettings({
-                                ...paymentSettings,
-                                defaultDueDays: parseInt(e.target.value) || 30,
-                              })
-                            }
-                            min="1"
-                            max="365"
-                            className="w-32"
-                          />
-                        </div>
-                        <Button>Salvar Configurações</Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
-
-                {/* Email Tab */}
-                <TabsContent value="email">
-                  <div className="space-y-6">
-                    <div>
-                      <h2 className="text-xl font-semibold mb-2">
-                        Configuração de Envio de Emails
-                      </h2>
-                      <p className="text-muted-foreground">
-                        Configure o servidor SMTP para o envio de notificações
-                        automáticas do sistema, como faturas e contratos.
-                      </p>
-                    </div>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Configurações do Servidor SMTP</CardTitle>
-                        <CardDescription>
-                          Configure os dados de conexão com seu provedor de
-                          email
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="emailProvider">
-                            Provedor de Email
-                          </Label>
                           <Select
-                            value={emailSettings.provider}
-                            onValueChange={(value) =>
-                              setEmailSettings({
-                                ...emailSettings,
-                                provider: value,
-                              })
-                            }
+                            value={itemsPerPage.toString()}
+                            onValueChange={handleItemsPerPageChange}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione o provedor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="smtp">SMTP</SelectItem>
-                              <SelectItem value="sendgrid">SendGrid</SelectItem>
-                              <SelectItem value="mailgun">Mailgun</SelectItem>
-                              <SelectItem value="ses">Amazon SES</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="smtpHost">Host SMTP</Label>
-                            <Input
-                              id="smtpHost"
-                              value={emailSettings.smtpHost}
-                              onChange={(e) =>
-                                setEmailSettings({
-                                  ...emailSettings,
-                                  smtpHost: e.target.value,
-                                })
-                              }
-                              placeholder="smtp.gmail.com"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="smtpPort">Porta SMTP</Label>
-                            <Input
-                              id="smtpPort"
-                              value={emailSettings.smtpPort}
-                              onChange={(e) =>
-                                setEmailSettings({
-                                  ...emailSettings,
-                                  smtpPort: e.target.value,
-                                })
-                              }
-                              placeholder="587"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="smtpUser">Usuário SMTP</Label>
-                          <Input
-                            id="smtpUser"
-                            type="email"
-                            value={emailSettings.smtpUser}
-                            onChange={(e) =>
-                              setEmailSettings({
-                                ...emailSettings,
-                                smtpUser: e.target.value,
-                              })
-                            }
-                            placeholder="seu@email.com"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="smtpPassword">Senha SMTP</Label>
-                          <Input
-                            id="smtpPassword"
-                            type="password"
-                            value={emailSettings.smtpPassword}
-                            onChange={(e) =>
-                              setEmailSettings({
-                                ...emailSettings,
-                                smtpPassword: e.target.value,
-                              })
-                            }
-                            placeholder="Sua senha SMTP"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="encryption">Criptografia</Label>
-                          <Select
-                            value={emailSettings.encryption}
-                            onValueChange={(value) =>
-                              setEmailSettings({
-                                ...emailSettings,
-                                encryption: value,
-                              })
-                            }
-                          >
-                            <SelectTrigger>
+                            <SelectTrigger className="w-20">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="none">Nenhuma</SelectItem>
-                              <SelectItem value="ssl">SSL</SelectItem>
-                              <SelectItem value="tls">TLS</SelectItem>
+                              <SelectItem value="5">5</SelectItem>
+                              <SelectItem value="10">10</SelectItem>
+                              <SelectItem value="20">20</SelectItem>
+                              <SelectItem value="50">50</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
-                        <Button variant="outline">Enviar Email de Teste</Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Modelos de Email</CardTitle>
-                        <CardDescription>
-                          Personalize o conteúdo dos emails enviados pelo
-                          sistema
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                          <div>
-                            <h4 className="font-medium">Fatura Gerada</h4>
-                            <p className="text-sm text-muted-foreground">
-                              Email enviado quando uma nova fatura é gerada
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage - 1)}
+                            disabled={currentPage === 1}
+                          >
+                            Anterior
+                          </Button>
+                          <span className="text-sm">
+                            Página {currentPage} de {totalPages}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                          >
+                            Próxima
                           </Button>
                         </div>
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                          <div>
-                            <h4 className="font-medium">
-                              Lembrete de Vencimento de Fatura
-                            </h4>
-                            <p className="text-sm text-muted-foreground">
-                              Email de lembrete antes do vencimento da fatura
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </Button>
-                        </div>
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                          <div>
-                            <h4 className="font-medium">
-                              Contrato Enviado para Assinatura
-                            </h4>
-                            <p className="text-sm text-muted-foreground">
-                              Email enviado quando um contrato precisa ser
-                              assinado
-                            </p>
-                          </div>
-                          <Button variant="outline" size="sm">
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </Button>
-                        </div>
-                        <Button>Salvar Configurações</Button>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </>
-          )}
-
-          {activeSection === "commission-reports" && (
-            <>
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight">
-                    Relatório de Comissões
-                  </h1>
-                  <p className="text-muted-foreground">
-                    Visualize todas as comissões geradas no sistema.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm">
-                    <Filter className="mr-2 h-4 w-4" />
-                    Filtros
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Download className="mr-2 h-4 w-4" />
-                    Exportar
-                  </Button>
-                </div>
-              </div>
-
-              {/* Commission Stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Total de Comissões
-                    </CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      R${" "}
-                      {commissionReports
-                        .reduce((sum, r) => sum + r.totalCommission, 0)
-                        .toLocaleString("pt-BR")}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Período atual
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Comissões Pagas
-                    </CardTitle>
-                    <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      R${" "}
-                      {commissionReports
-                        .reduce((sum, r) => sum + r.paidCommission, 0)
-                        .toLocaleString("pt-BR")}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Já processadas
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Comissões Pendentes
-                    </CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      R${" "}
-                      {commissionReports
-                        .reduce((sum, r) => sum + r.pendingCommission, 0)
-                        .toLocaleString("pt-BR")}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Aguardando pagamento
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Representantes Ativos
-                    </CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {commissionReports.length}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Com comissões no período
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Relatório Detalhado</CardTitle>
-                  <CardDescription>
-                    Comissões por representante no período selecionado
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Representante</TableHead>
-                        <TableHead>Período</TableHead>
-                        <TableHead>Contratos</TableHead>
-                        <TableHead>Total Comissão</TableHead>
-                        <TableHead>Pago</TableHead>
-                        <TableHead>Pendente</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {commissionReports.map((report) => (
-                        <TableRow key={report.id}>
-                          <TableCell className="font-medium">
-                            {report.representative}
-                          </TableCell>
-                          <TableCell>{report.period}</TableCell>
-                          <TableCell>{report.contracts} contratos</TableCell>
-                          <TableCell>
-                            R$ {report.totalCommission.toLocaleString("pt-BR")}
-                          </TableCell>
-                          <TableCell className="text-green-600">
-                            R$ {report.paidCommission.toLocaleString("pt-BR")}
-                          </TableCell>
-                          <TableCell className="text-amber-600">
-                            R${" "}
-                            {report.pendingCommission.toLocaleString("pt-BR")}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                report.pendingCommission === 0
-                                  ? "default"
-                                  : "outline"
-                              }
-                            >
-                              {report.pendingCommission === 0
-                                ? "Completo"
-                                : "Pendente"}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {activeSection === "withdrawals" && (
-            <>
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold tracking-tight">
-                  Solicitações de Retirada
-                </h1>
-                <p className="text-muted-foreground">
-                  Gerencie os pedidos de saque dos representantes.
-                </p>
-              </div>
-
-              {/* Withdrawal Stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Solicitações Pendentes
-                    </CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {
-                        withdrawalRequests.filter((r) => r.status === "pending")
-                          .length
-                      }
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Aguardando aprovação
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Valor Pendente
-                    </CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      R${" "}
-                      {withdrawalRequests
-                        .filter((r) => r.status === "pending")
-                        .reduce((sum, r) => sum + r.amount, 0)
-                        .toLocaleString("pt-BR")}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Total a ser processado
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Aprovadas Hoje
-                    </CardTitle>
-                    <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {
-                        withdrawalRequests.filter(
-                          (r) => r.status === "approved",
-                        ).length
-                      }
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Processadas com sucesso
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Taxa de Aprovação
-                    </CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">85%</div>
-                    <p className="text-xs text-muted-foreground">
-                      Últimos 30 dias
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Lista de Solicitações</CardTitle>
-                  <CardDescription>
-                    Gerencie as solicitações de retirada dos representantes
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {withdrawalRequests.map((request) => (
-                      <div
-                        key={request.id}
-                        className="flex items-center justify-between p-4 border rounded-lg"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h4 className="font-medium">
-                              {request.representativeName}
-                            </h4>
-                            <Badge
-                              variant={
-                                request.status === "pending"
-                                  ? "outline"
-                                  : request.status === "approved"
-                                    ? "default"
-                                    : "destructive"
-                              }
-                            >
-                              {request.status === "pending"
-                                ? "Pendente"
-                                : request.status === "approved"
-                                  ? "Aprovado"
-                                  : "Rejeitado"}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">
-                                Valor Solicitado
-                              </p>
-                              <p className="font-medium">
-                                R$ {request.amount.toLocaleString("pt-BR")}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">
-                                Saldo Disponível
-                              </p>
-                              <p className="font-medium">
-                                R${" "}
-                                {request.availableBalance.toLocaleString(
-                                  "pt-BR",
-                                )}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">
-                                Data da Solicitação
-                              </p>
-                              <p className="font-medium">
-                                {new Date(
-                                  request.requestDate,
-                                ).toLocaleDateString("pt-BR")}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">
-                                Nota Fiscal
-                              </p>
-                              <Button
-                                variant="link"
-                                className="p-0 h-auto font-normal text-blue-600"
-                                onClick={() =>
-                                  console.log(
-                                    "Download invoice:",
-                                    request.invoiceFile,
-                                  )
-                                }
-                              >
-                                {request.invoiceFile}
-                              </Button>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">
-                                ID da Solicitação
-                              </p>
-                              <p className="font-medium">{request.id}</p>
-                            </div>
-                          </div>
-                        </div>
-                        {request.status === "pending" && (
-                          <div className="flex items-center gap-2 ml-4">
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                handleWithdrawalAction(request.id, "approve")
-                              }
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              <CheckCircle className="mr-1 h-3 w-3" />
-                              Aprovar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                setSelectedWithdrawalRequest(request);
-                                setIsRejectionDialogOpen(true);
-                              }}
-                            >
-                              <XCircle className="mr-1 h-3 w-3" />
-                              Reprovar
-                            </Button>
-                          </div>
-                        )}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
-            </>
+            </div>
           )}
 
-          {activeSection === "invoices" && (
-            <>
-              <div className="mb-6 flex items-center justify-between">
+          {activeSection === "contracts" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight">
-                    Gestão de Faturas
+                    Contratos
                   </h1>
                   <p className="text-muted-foreground">
-                    Gerencie faturas, contratos e antecipações de pagamento.
+                    Gerencie todos os contratos do sistema.
                   </p>
                 </div>
+                <Button
+                  onClick={() => {
+                    setShowContractFlow(true);
+                    setActiveSection("contract-creation");
+                  }}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Novo Contrato
+                </Button>
               </div>
 
-              {/* Invoice Stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Faturas Pendentes
-                    </CardTitle>
-                    <Receipt className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {
-                        invoices.filter((inv) => inv.status === "pending")
-                          .length
-                      }
+              {/* Contracts Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lista de Contratos</CardTitle>
+                  <CardDescription>
+                    {allContracts.length} contratos registrados no sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingContracts ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      R${" "}
-                      {invoices
-                        .filter((inv) => inv.status === "pending")
-                        .reduce((sum, inv) => sum + inv.amount, 0)
-                        .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Faturas Pagas
-                    </CardTitle>
-                    <CreditCard className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {invoices.filter((inv) => inv.status === "paid").length}
+                  ) : allContracts.length === 0 ? (
+                    <div className="text-center py-8">
+                      <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-lg font-medium mb-2">
+                        Nenhum contrato encontrado
+                      </p>
+                      <p className="text-muted-foreground mb-4">
+                        Comece criando seu primeiro contrato.
+                      </p>
+                      <Button
+                        onClick={() => {
+                          setShowContractFlow(true);
+                          setActiveSection("contract-creation");
+                        }}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Criar Primeiro Contrato
+                      </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      R${" "}
-                      {invoices
-                        .filter((inv) => inv.status === "paid")
-                        .reduce((sum, inv) => sum + inv.amount, 0)
-                        .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Contratos Ativos
-                    </CardTitle>
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {contracts.filter((c) => c.status === "Ativo").length}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      R${" "}
-                      {contracts
-                        .filter((c) => c.status === "Ativo")
-                        .reduce((sum, c) => sum + c.remainingValue, 0)
-                        .toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}{" "}
-                      restantes
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      Antecipações
-                    </CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {
-                        invoices.filter((inv) => inv.installmentNumber === 0)
-                          .length
-                      }
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      R${" "}
-                      {invoices
-                        .filter((inv) => inv.installmentNumber === 0)
-                        .reduce((sum, inv) => sum + inv.amount, 0)
-                        .toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                {/* Contracts Management */}
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle>Contratos Ativos</CardTitle>
-                      <CardDescription>
-                        Gerencie contratos e gere faturas
-                      </CardDescription>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {contracts.map((contract) => (
-                        <div
-                          key={contract.id}
-                          className="flex items-center justify-between p-4 border rounded-lg"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-medium">{contract.client}</h4>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Código</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Representante</TableHead>
+                          <TableHead>Valor</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allContracts.slice(0, 10).map((contract: any) => (
+                          <TableRow key={contract.id}>
+                            <TableCell className="font-medium">
+                              {contract.contract_number ||
+                                contract.contract_code ||
+                                `CONT-${contract.id}`}
+                            </TableCell>
+                            <TableCell>
+                              {contract.clients?.name ||
+                                contract.clients?.full_name ||
+                                "Cliente não encontrado"}
+                            </TableCell>
+                            <TableCell>
+                              {contract.profiles?.full_name ||
+                                "Representante não encontrado"}
+                            </TableCell>
+                            <TableCell>
+                              {new Intl.NumberFormat("pt-BR", {
+                                style: "currency",
+                                currency: "BRL",
+                              }).format(
+                                contract.credit_amount ||
+                                  contract.total_value ||
+                                  0,
+                              )}
+                            </TableCell>
+                            <TableCell>
                               <Badge
                                 variant={
+                                  contract.status === "Aprovado" ||
                                   contract.status === "Ativo"
                                     ? "default"
-                                    : "secondary"
+                                    : contract.status === "Pendente"
+                                      ? "outline"
+                                      : contract.status === "Reprovado"
+                                        ? "destructive"
+                                        : "secondary"
                                 }
                               >
                                 {contract.status}
                               </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground mb-1">
-                              Contrato: {contract.id} | Rep:{" "}
-                              {contract.representative}
-                            </p>
-                            <p className="text-sm">
-                              Valor restante:{" "}
-                              <span className="font-medium">
-                                R${" "}
-                                {contract.remainingValue.toLocaleString(
-                                  "pt-BR",
-                                  { minimumFractionDigits: 2 },
-                                )}
-                              </span>
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Parcelas: {contract.paidInstallments}/
-                              {contract.installments}
-                            </p>
-                            <Progress
-                              value={
-                                (contract.paidInstallments /
-                                  contract.installments) *
-                                100
-                              }
-                              className="mt-2"
-                            />
-                          </div>
-                          <div className="ml-4 space-y-2">
-                            <Button
-                              size="sm"
-                              onClick={() => generateInvoice(contract)}
-                              disabled={
-                                contract.paidInstallments >=
-                                contract.installments
-                              }
-                            >
-                              <Receipt className="mr-1 h-3 w-3" />
-                              Gerar Fatura
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedContract(contract);
-                                setIsEarlyPaymentDialogOpen(true);
-                              }}
-                              disabled={contract.remainingValue <= 0}
-                            >
-                              <DollarSign className="mr-1 h-3 w-3" />
-                              Antecipar
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Invoices List */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Faturas Recentes</CardTitle>
-                    <CardDescription>
-                      Últimas faturas geradas no sistema
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {invoices.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-8">
-                          Nenhuma fatura gerada ainda
-                        </p>
-                      ) : (
-                        invoices
-                          .slice(-10)
-                          .reverse()
-                          .map((invoice) => {
-                            const contract = contracts.find(
-                              (c) => c.id === invoice.contractId,
-                            );
-                            return (
-                              <div
-                                key={invoice.id}
-                                className="flex items-center justify-between p-3 border rounded-lg"
-                              >
-                                <div className="flex-1">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <h5 className="font-medium text-sm">
-                                      {invoice.id}
-                                    </h5>
-                                    <Badge
-                                      variant={
-                                        invoice.status === "paid"
-                                          ? "default"
-                                          : invoice.status === "overdue"
-                                            ? "destructive"
-                                            : "outline"
-                                      }
-                                    >
-                                      {invoice.status === "paid"
-                                        ? "Paga"
-                                        : invoice.status === "overdue"
-                                          ? "Vencida"
-                                          : "Pendente"}
-                                    </Badge>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground mb-1">
-                                    Cliente: {contract?.client || "N/A"}
-                                  </p>
-                                  <p className="text-sm font-medium">
-                                    R${" "}
-                                    {invoice.amount.toLocaleString("pt-BR", {
-                                      minimumFractionDigits: 2,
-                                    })}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {invoice.installmentNumber === 0
-                                      ? "Antecipação"
-                                      : `Parcela ${invoice.installmentNumber}`}{" "}
-                                    | Venc:{" "}
-                                    {new Date(
-                                      invoice.dueDate,
-                                    ).toLocaleDateString("pt-BR")}
-                                  </p>
-                                </div>
+                            </TableCell>
+                            <TableCell>
+                              {new Date(contract.created_at).toLocaleDateString(
+                                "pt-BR",
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex gap-2 justify-end">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleViewContract(contract.id.toString())
+                                  }
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleEditContract(contract.id.toString())
+                                  }
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
                               </div>
-                            );
-                          })
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Early Payment Dialog */}
-              <Dialog
-                open={isEarlyPaymentDialogOpen}
-                onOpenChange={setIsEarlyPaymentDialogOpen}
-              >
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Antecipação de Pagamento</DialogTitle>
-                    <DialogDescription>
-                      Processe uma antecipação de pagamento para o contrato
-                      selecionado.
-                    </DialogDescription>
-                  </DialogHeader>
-                  {selectedContract && (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-muted rounded-lg">
-                        <h4 className="font-medium">
-                          {selectedContract.client}
-                        </h4>
-                        <p className="text-sm text-muted-foreground">
-                          Contrato: {selectedContract.id}
-                        </p>
-                        <p className="text-sm">
-                          Valor restante:{" "}
-                          <span className="font-medium">
-                            R${" "}
-                            {selectedContract.remainingValue.toLocaleString(
-                              "pt-BR",
-                              { minimumFractionDigits: 2 },
-                            )}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="installments" className="text-right">
-                          Parcelas
-                        </Label>
-                        <Select
-                          value={earlyPaymentInstallments}
-                          onValueChange={setEarlyPaymentInstallments}
-                        >
-                          <SelectTrigger className="col-span-3">
-                            <SelectValue placeholder="Selecione o número de parcelas" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Array.from(
-                              {
-                                length:
-                                  selectedContract.installments -
-                                  selectedContract.paidInstallments,
-                              },
-                              (_, i) => i + 1,
-                            ).map((num) => {
-                              const installmentValue =
-                                selectedContract.remainingValue /
-                                (selectedContract.installments -
-                                  selectedContract.paidInstallments);
-                              const totalAmount = installmentValue * num;
-                              return (
-                                <SelectItem key={num} value={num.toString()}>
-                                  {num}parcela{num > 1 ? "s" : ""}- R${" "}
-                                  {totalAmount.toLocaleString("pt-BR", {
-                                    minimumFractionDigits: 2,
-                                  })}
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {earlyPaymentInstallments && (
-                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                          <p className="text-sm font-medium text-green-800">
-                            Valor total da antecipação:
-                          </p>
-                          <p className="text-lg font-bold text-green-900">
-                            R${" "}
-                            {(
-                              (selectedContract.remainingValue /
-                                (selectedContract.installments -
-                                  selectedContract.paidInstallments)) *
-                              parseInt(earlyPaymentInstallments)
-                            ).toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                            })}
-                          </p>
-                          <p className="text-xs text-green-700">
-                            {earlyPaymentInstallments} parcela
-                            {parseInt(earlyPaymentInstallments) > 1
-                              ? "s"
-                              : ""}{" "}
-                            de R${" "}
-                            {(
-                              selectedContract.remainingValue /
-                              (selectedContract.installments -
-                                selectedContract.paidInstallments)
-                            ).toLocaleString("pt-BR", {
-                              minimumFractionDigits: 2,
-                            })}{" "}
-                            cada
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   )}
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsEarlyPaymentDialogOpen(false)}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button onClick={handleEarlyPayment}>
-                      Processar Antecipação
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </>
-          )}
-
-          {activeSection === "collaborators" && (
-            <>
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold tracking-tight">
-                    Colaboradores
-                  </h1>
-                  <p className="text-muted-foreground">
-                    Gerencie usuários internos do sistema.
-                  </p>
-                </div>
-                <Dialog
-                  open={isNewUserDialogOpen}
-                  onOpenChange={setIsNewUserDialogOpen}
-                >
-                  <DialogTrigger asChild>
-                    <Button>
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Novo Usuário
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Cadastrar Novo Usuário</DialogTitle>
-                      <DialogDescription>
-                        Crie um novo usuário interno do sistema.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="userName" className="text-right">
-                          Nome
-                        </Label>
-                        <Input
-                          id="userName"
-                          value={newInternalUser.name}
-                          onChange={(e) =>
-                            setNewInternalUser({
-                              ...newInternalUser,
-                              name: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="Nome completo"
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="userEmail" className="text-right">
-                          Email
-                        </Label>
-                        <Input
-                          id="userEmail"
-                          type="email"
-                          value={newInternalUser.email}
-                          onChange={(e) =>
-                            setNewInternalUser({
-                              ...newInternalUser,
-                              email: e.target.value,
-                            })
-                          }
-                          className="col-span-3"
-                          placeholder="email@credicar.com"
-                        />
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="userRole" className="text-right">
-                          Função
-                        </Label>
-                        <Select
-                          value={newInternalUser.role}
-                          onValueChange={(value) =>
-                            setNewInternalUser({
-                              ...newInternalUser,
-                              role: value,
-                            })
-                          }
-                        >
-                          <SelectTrigger className="col-span-3">
-                            <SelectValue placeholder="Selecione a função" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Administrador">
-                              Administrador
-                            </SelectItem>
-                            <SelectItem value="Suporte">Suporte</SelectItem>
-                            <SelectItem value="Financeiro">
-                              Financeiro
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="userPassword" className="text-right">
-                          Senha
-                        </Label>
-                        <div className="col-span-3 flex gap-2">
-                          <Input
-                            id="userPassword"
-                            type="text"
-                            value={newInternalUser.password}
-                            onChange={(e) =>
-                              setNewInternalUser({
-                                ...newInternalUser,
-                                password: e.target.value,
-                              })
-                            }
-                            className="flex-1"
-                            placeholder="Digite ou gere uma senha"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => {
-                              const chars =
-                                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-                              let password = "";
-                              for (let i = 0; i < 12; i++) {
-                                password += chars.charAt(
-                                  Math.floor(Math.random() * chars.length),
-                                );
-                              }
-                              setNewInternalUser({
-                                ...newInternalUser,
-                                password,
-                              });
-                            }}
-                          >
-                            Gerar
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button
-                        type="submit"
-                        onClick={() => {
-                          const newUser = {
-                            id: internalUsers.length + 1,
-                            name: newInternalUser.name,
-                            email: newInternalUser.email,
-                            role: newInternalUser.role,
-                            status: "Ativo",
-                            createdAt: new Date().toLocaleDateString("pt-BR"),
-                          };
-                          setInternalUsers([...internalUsers, newUser]);
-                          setIsNewUserDialogOpen(false);
-                          setNewInternalUser({
-                            name: "",
-                            email: "",
-                            role: "Suporte",
-                            password: "",
-                          });
-                          console.log("New internal user created:", newUser);
-                        }}
-                      >
-                        Cadastrar
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Usuários Internos</CardTitle>
-                  <CardDescription>
-                    {internalUsers.length} usuários cadastrados no sistema
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Função</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Data de Criação</TableHead>
-                        <TableHead>Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {internalUsers.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">
-                            {user.name}
-                          </TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                user.role === "Administrador"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                            >
-                              {user.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                user.status === "Ativo"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                            >
-                              {user.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{user.createdAt}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Button variant="ghost" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
                 </CardContent>
               </Card>
-            </>
+            </div>
           )}
+
+          {activeSection === "contract-templates" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Modelos de Contrato
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Gerencie os modelos de contrato do sistema.
+                  </p>
+                </div>
+              </div>
+              <ContractTemplateManagement
+                currentUserId="admin"
+                isAdmin={true}
+              />
+            </div>
+          )}
+
+          {/* Add other sections here as needed */}
         </main>
       </div>
 
-      {/* Representative Modal */}
-      <Dialog
-        open={isRepresentativeModalOpen}
-        onOpenChange={setIsRepresentativeModalOpen}
-      >
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Informações do Representante</DialogTitle>
-            <DialogDescription>
-              Dados principais do representante selecionado
-            </DialogDescription>
-          </DialogHeader>
-          {selectedRepresentativeForModal && (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Avatar className="h-16 w-16">
-                  <AvatarImage
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedRepresentativeForModal.name}`}
-                  />
-                  <AvatarFallback>
-                    {selectedRepresentativeForModal.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="text-lg font-semibold">
-                    {selectedRepresentativeForModal.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    ID:{" "}
-                    {selectedRepresentativeForModal.id
-                      .toString()
-                      .padStart(3, "0")}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Email
-                  </p>
-                  <p className="text-sm">
-                    {selectedRepresentativeForModal.email}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Telefone
-                  </p>
-                  <p className="text-sm">
-                    {selectedRepresentativeForModal.phone}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Total de Vendas
-                  </p>
-                  <p className="text-sm font-semibold text-green-600">
-                    {selectedRepresentativeForModal.totalSales}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Contratos
-                  </p>
-                  <p className="text-sm">
-                    {selectedRepresentativeForModal.contractsCount} contratos
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Status
-                  </p>
-                  <Badge
-                    variant={
-                      selectedRepresentativeForModal.status === "Ativo"
-                        ? "default"
-                        : "secondary"
-                    }
-                  >
-                    {selectedRepresentativeForModal.status}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Data de Cadastro
-                  </p>
-                  <p className="text-sm">
-                    {selectedRepresentativeForModal.joinDate}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button
-              onClick={() => {
-                setIsRepresentativeModalOpen(false);
-                if (selectedRepresentativeForModal) {
-                  navigate(
-                    `/representative/${selectedRepresentativeForModal.id}`,
-                  );
-                }
-              }}
-            >
-              Ver Perfil Completo
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rejection Dialog for Registration */}
-      <Dialog
-        open={isRejectionDialogOpen && selectedPendingRep}
-        onOpenChange={(open) => {
-          if (!open && selectedPendingRep) {
-            setIsRejectionDialogOpen(false);
-            setRejectionReason("");
-            setSelectedPendingRep(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Reprovar Solicitação</DialogTitle>
-            <DialogDescription>
-              Informe o motivo da reprovação para {selectedPendingRep?.name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="rejectionReason">Motivo da Reprovação *</Label>
-              <Textarea
-                id="rejectionReason"
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                className="min-h-[100px]"
-                placeholder="Descreva o motivo da reprovação..."
-                required
+      {/* Contract Details Modal */}
+      <Dialog open={isContractModalOpen} onOpenChange={setIsContractModalOpen}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-hidden p-0">
+          <div className="h-[95vh] overflow-y-auto">
+            {selectedContractId && (
+              <ContractDetails
+                contractId={selectedContractId}
+                onBack={handleCloseContractModal}
               />
-            </div>
+            )}
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsRejectionDialogOpen(false);
-                setRejectionReason("");
-                setSelectedPendingRep(null);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (rejectionReason.trim() && selectedPendingRep) {
-                  // Remove from pending registrations
-                  setPendingRegistrations((prev) =>
-                    prev.filter((p) => p.id !== selectedPendingRep.id),
-                  );
-                  console.log(
-                    "Registration rejected:",
-                    selectedPendingRep,
-                    "Reason:",
-                    rejectionReason,
-                  );
-
-                  setIsRejectionDialogOpen(false);
-                  setRejectionReason("");
-                  setSelectedPendingRep(null);
-                } else {
-                  alert("Por favor, informe o motivo da reprovação.");
-                }
-              }}
-              disabled={!rejectionReason.trim()}
-            >
-              Confirmar Reprovação
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Rejection Dialog for Withdrawal Request */}
-      <Dialog
-        open={isRejectionDialogOpen && selectedWithdrawalRequest}
-        onOpenChange={(open) => {
-          if (!open && selectedWithdrawalRequest) {
-            setIsRejectionDialogOpen(false);
-            setRejectionReason("");
-            setSelectedWithdrawalRequest(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Reprovar Solicitação de Retirada</DialogTitle>
-            <DialogDescription>
-              Informe o motivo da reprovação para{" "}
-              {selectedWithdrawalRequest?.representativeName}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <h4 className="font-medium text-red-800">
-                {selectedWithdrawalRequest?.representativeName}
-              </h4>
-              <p className="text-sm text-red-600">
-                Valor: R${" "}
-                {selectedWithdrawalRequest?.amount.toLocaleString("pt-BR")}
-              </p>
-              <p className="text-sm text-red-600">
-                ID: {selectedWithdrawalRequest?.id}
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="withdrawalRejectionReason">
-                Motivo da Reprovação *
-              </Label>
-              <Textarea
-                id="withdrawalRejectionReason"
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                className="min-h-[100px]"
-                placeholder="Descreva o motivo da reprovação da solicitação de retirada..."
-                required
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsRejectionDialogOpen(false);
-                setRejectionReason("");
-                setSelectedWithdrawalRequest(null);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRejectWithReason}
-              disabled={!rejectionReason.trim()}
-            >
-              Confirmar Reprovação
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

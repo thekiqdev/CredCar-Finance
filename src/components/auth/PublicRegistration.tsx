@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { representativeService, authService } from "../../lib/supabase";
 import {
   Card,
   CardContent,
@@ -16,16 +17,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 const PublicRegistration = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    nomeCompleto: "",
+    name: "",
     email: "",
-    telefone: "",
+    phone: "",
     cnpj: "",
-    razaoSocial: "",
-    pontoVenda: "",
-    senha: "",
-    confirmarSenha: "",
+    razao_social: "",
+    ponto_venda: "",
+    password: "",
+    confirmPassword: "",
   });
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -48,46 +49,46 @@ const PublicRegistration = () => {
   };
 
   const validateForm = () => {
-    const newErrors = {};
+    const newErrors: Record<string, string> = {};
 
-    if (!formData.nomeCompleto.trim()) {
-      newErrors.nomeCompleto = "Nome completo é obrigatório";
+    if (!formData.name.trim()) {
+      newErrors["name"] = "Nome completo é obrigatório";
     }
 
     if (!formData.email.trim()) {
-      newErrors.email = "Email é obrigatório";
+      newErrors["email"] = "Email é obrigatório";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = "Email inválido";
+      newErrors["email"] = "Email inválido";
     }
 
-    if (!formData.telefone.trim()) {
-      newErrors.telefone = "Telefone é obrigatório";
+    if (!formData.phone.trim()) {
+      newErrors["phone"] = "Telefone é obrigatório";
     }
 
     if (!formData.cnpj.trim()) {
-      newErrors.cnpj = "CNPJ é obrigatório";
+      newErrors["cnpj"] = "CNPJ é obrigatório";
     } else if (formData.cnpj.replace(/\D/g, "").length !== 14) {
-      newErrors.cnpj = "CNPJ deve ter 14 dígitos";
+      newErrors["cnpj"] = "CNPJ deve ter 14 dígitos";
     }
 
-    if (!formData.razaoSocial.trim()) {
-      newErrors.razaoSocial = "Razão social é obrigatória";
+    if (!formData.razao_social.trim()) {
+      newErrors["razao_social"] = "Razão social é obrigatória";
     }
 
-    if (!formData.pontoVenda.trim()) {
-      newErrors.pontoVenda = "Ponto de venda é obrigatório";
+    if (!formData.ponto_venda.trim()) {
+      newErrors["ponto_venda"] = "Ponto de venda é obrigatório";
     }
 
-    if (!formData.senha.trim()) {
-      newErrors.senha = "Senha é obrigatória";
-    } else if (formData.senha.length < 6) {
-      newErrors.senha = "Senha deve ter pelo menos 6 caracteres";
+    if (!formData.password.trim()) {
+      newErrors["password"] = "Senha é obrigatória";
+    } else if (formData.password.length < 6) {
+      newErrors["password"] = "Senha deve ter pelo menos 6 caracteres";
     }
 
-    if (!formData.confirmarSenha.trim()) {
-      newErrors.confirmarSenha = "Confirmação de senha é obrigatória";
-    } else if (formData.senha !== formData.confirmarSenha) {
-      newErrors.confirmarSenha = "Senhas não coincidem";
+    if (!formData.confirmPassword.trim()) {
+      newErrors["confirmPassword"] = "Confirmação de senha é obrigatória";
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors["confirmPassword"] = "Senhas não coincidem";
     }
 
     setErrors(newErrors);
@@ -99,7 +100,7 @@ const PublicRegistration = () => {
 
     if (field === "cnpj") {
       formattedValue = formatCnpj(value);
-    } else if (field === "telefone") {
+    } else if (field === "phone") {
       formattedValue = formatPhone(value);
     }
 
@@ -121,85 +122,37 @@ const PublicRegistration = () => {
     setIsLoading(true);
 
     try {
-      // Import Supabase functions
-      const { signUp, createProfile } = await import("@/lib/supabase");
-
-      // Create user in auth.users
-      const { data: authData, error: authError } = await signUp(
-        formData.email,
-        formData.senha,
-      );
-
-      if (authError) {
-        throw new Error(authError.message);
-      }
-
-      if (!authData.user) {
-        throw new Error("Falha ao criar usuário");
-      }
-
-      // Create profile in public.profiles
-      const { error: profileError } = await createProfile({
-        id: authData.user.id,
-        full_name: formData.nomeCompleto,
+      // Create public registration in database
+      const newUser = await representativeService.createPublicRegistration({
+        name: formData.name,
         email: formData.email,
-        phone: formData.telefone,
-        role: "Representante",
-        status: "Pendente de Aprovação",
+        phone: formData.phone,
         cnpj: formData.cnpj,
-        company_name: formData.razaoSocial,
-        point_of_sale: formData.pontoVenda,
-        commission_code: null, // Will be generated when approved
+        razao_social: formData.razao_social,
+        ponto_venda: formData.ponto_venda,
+        password: formData.password,
       });
 
-      if (profileError) {
-        throw new Error(profileError.message);
-      }
+      console.log("Registration submitted successfully:", formData.name);
 
-      console.log("Registration successful:", {
-        userId: authData.user.id,
-        email: formData.email,
-        name: formData.nomeCompleto,
-      });
+      // Set the user in localStorage so DocumentUpload can access it
+      authService.setCurrentUser(newUser);
 
-      setIsSuccess(true);
-    } catch (error: any) {
+      // Redirect to status page
+      navigate("/status-cadastro");
+    } catch (error) {
       console.error("Registration error:", error);
-      setErrors({
-        submit: error.message || "Erro ao processar cadastro. Tente novamente.",
-      });
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      if (errorMessage.includes("Email já está em uso")) {
+        setErrors({ email: "Este email já está cadastrado no sistema." });
+      } else {
+        setErrors({ submit: `Erro ao enviar cadastro: ${errorMessage}` });
+      }
     } finally {
       setIsLoading(false);
     }
   };
-
-  if (isSuccess) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-        <Card className="w-full max-w-md bg-white shadow-lg">
-          <CardContent className="p-6 text-center">
-            <CheckCircle className="h-16 w-16 text-green-600 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-green-600 mb-2">
-              Cadastro Realizado!
-            </h2>
-            <p className="text-gray-600 mb-4">
-              Sua solicitação foi enviada com sucesso. Você receberá um email
-              quando sua conta for aprovada pelo administrador.
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Após a aprovação, você poderá fazer login no sistema.
-            </p>
-            <Button
-              onClick={() => navigate("/")}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Voltar ao Login
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
@@ -219,21 +172,25 @@ const PublicRegistration = () => {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {errors["submit"] && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{errors["submit"]}</AlertDescription>
+              </Alert>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="nomeCompleto">Nome Completo *</Label>
+                <Label htmlFor="name">Nome Completo *</Label>
                 <Input
-                  id="nomeCompleto"
+                  id="name"
                   type="text"
-                  value={formData.nomeCompleto}
-                  onChange={(e) =>
-                    handleInputChange("nomeCompleto", e.target.value)
-                  }
+                  value={formData.name}
+                  onChange={(e) => handleInputChange("name", e.target.value)}
                   placeholder="Seu nome completo"
-                  className={errors.nomeCompleto ? "border-red-500" : ""}
+                  className={errors["name"] ? "border-red-500" : ""}
                 />
-                {errors.nomeCompleto && (
-                  <p className="text-sm text-red-500">{errors.nomeCompleto}</p>
+                {errors["name"] && (
+                  <p className="text-sm text-red-500">{errors["name"]}</p>
                 )}
               </div>
 
@@ -245,28 +202,26 @@ const PublicRegistration = () => {
                   value={formData.email}
                   onChange={(e) => handleInputChange("email", e.target.value)}
                   placeholder="seu.email@exemplo.com"
-                  className={errors.email ? "border-red-500" : ""}
+                  className={errors["email"] ? "border-red-500" : ""}
                 />
-                {errors.email && (
-                  <p className="text-sm text-red-500">{errors.email}</p>
+                {errors["email"] && (
+                  <p className="text-sm text-red-500">{errors["email"]}</p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="telefone">Telefone *</Label>
+                <Label htmlFor="phone">Telefone *</Label>
                 <Input
-                  id="telefone"
+                  id="phone"
                   type="text"
-                  value={formData.telefone}
-                  onChange={(e) =>
-                    handleInputChange("telefone", e.target.value)
-                  }
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange("phone", e.target.value)}
                   placeholder="(11) 99999-9999"
                   maxLength={15}
-                  className={errors.telefone ? "border-red-500" : ""}
+                  className={errors["phone"] ? "border-red-500" : ""}
                 />
-                {errors.telefone && (
-                  <p className="text-sm text-red-500">{errors.telefone}</p>
+                {errors["phone"] && (
+                  <p className="text-sm text-red-500">{errors["phone"]}</p>
                 )}
               </div>
 
@@ -279,88 +234,87 @@ const PublicRegistration = () => {
                   onChange={(e) => handleInputChange("cnpj", e.target.value)}
                   placeholder="00.000.000/0000-00"
                   maxLength={18}
-                  className={errors.cnpj ? "border-red-500" : ""}
+                  className={errors["cnpj"] ? "border-red-500" : ""}
                 />
-                {errors.cnpj && (
-                  <p className="text-sm text-red-500">{errors.cnpj}</p>
+                {errors["cnpj"] && (
+                  <p className="text-sm text-red-500">{errors["cnpj"]}</p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="razaoSocial">Razão Social *</Label>
+                <Label htmlFor="razao_social">Razão Social *</Label>
                 <Input
-                  id="razaoSocial"
+                  id="razao_social"
                   type="text"
-                  value={formData.razaoSocial}
+                  value={formData.razao_social}
                   onChange={(e) =>
-                    handleInputChange("razaoSocial", e.target.value)
+                    handleInputChange("razao_social", e.target.value)
                   }
                   placeholder="Nome da empresa"
-                  className={errors.razaoSocial ? "border-red-500" : ""}
+                  className={errors["razao_social"] ? "border-red-500" : ""}
                 />
-                {errors.razaoSocial && (
-                  <p className="text-sm text-red-500">{errors.razaoSocial}</p>
+                {errors["razao_social"] && (
+                  <p className="text-sm text-red-500">
+                    {errors["razao_social"]}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="pontoVenda">Ponto de Venda *</Label>
+                <Label htmlFor="ponto_venda">Ponto de Venda *</Label>
                 <Input
-                  id="pontoVenda"
+                  id="ponto_venda"
                   type="text"
-                  value={formData.pontoVenda}
+                  value={formData.ponto_venda}
                   onChange={(e) =>
-                    handleInputChange("pontoVenda", e.target.value)
+                    handleInputChange("ponto_venda", e.target.value)
                   }
                   placeholder="Localização do ponto de venda"
-                  className={errors.pontoVenda ? "border-red-500" : ""}
+                  className={errors["ponto_venda"] ? "border-red-500" : ""}
                 />
-                {errors.pontoVenda && (
-                  <p className="text-sm text-red-500">{errors.pontoVenda}</p>
+                {errors["ponto_venda"] && (
+                  <p className="text-sm text-red-500">
+                    {errors["ponto_venda"]}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="senha">Senha *</Label>
+                <Label htmlFor="password">Senha *</Label>
                 <Input
-                  id="senha"
+                  id="password"
                   type="password"
-                  value={formData.senha}
-                  onChange={(e) => handleInputChange("senha", e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                  className={errors.senha ? "border-red-500" : ""}
-                />
-                {errors.senha && (
-                  <p className="text-sm text-red-500">{errors.senha}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmarSenha">Confirmar Senha *</Label>
-                <Input
-                  id="confirmarSenha"
-                  type="password"
-                  value={formData.confirmarSenha}
+                  value={formData.password}
                   onChange={(e) =>
-                    handleInputChange("confirmarSenha", e.target.value)
+                    handleInputChange("password", e.target.value)
+                  }
+                  placeholder="Mínimo 6 caracteres"
+                  className={errors["password"] ? "border-red-500" : ""}
+                />
+                {errors["password"] && (
+                  <p className="text-sm text-red-500">{errors["password"]}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Senha *</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={(e) =>
+                    handleInputChange("confirmPassword", e.target.value)
                   }
                   placeholder="Confirme sua senha"
-                  className={errors.confirmarSenha ? "border-red-500" : ""}
+                  className={errors["confirmPassword"] ? "border-red-500" : ""}
                 />
-                {errors.confirmarSenha && (
+                {errors["confirmPassword"] && (
                   <p className="text-sm text-red-500">
-                    {errors.confirmarSenha}
+                    {errors["confirmPassword"]}
                   </p>
                 )}
               </div>
             </div>
-
-            {errors.submit && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{errors.submit}</AlertDescription>
-              </Alert>
-            )}
 
             <div className="pt-4">
               <Button

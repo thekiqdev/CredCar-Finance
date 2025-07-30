@@ -31,6 +31,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Calculator, Check, ChevronRight } from "lucide-react";
+import ContractCreationFlow from "./ContractCreationFlow";
 
 interface PaymentPlan {
   firstPayment: number;
@@ -39,12 +40,17 @@ interface PaymentPlan {
   totalValue: number;
 }
 
-const SalesSimulator = () => {
+interface SalesSimulatorProps {
+  onComplete?: () => void;
+}
+
+const SalesSimulator: React.FC<SalesSimulatorProps> = ({ onComplete }) => {
   const [selectedTable, setSelectedTable] = useState<string>("a");
   const [creditAmount, setCreditAmount] = useState<string>("");
   const [paymentPlans, setPaymentPlans] = useState<PaymentPlan[]>([]);
   const [showResults, setShowResults] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<PaymentPlan | null>(null);
+  const [showContractFlow, setShowContractFlow] = useState<boolean>(false);
 
   // Mock commission tables data
   const commissionTables = {
@@ -104,14 +110,26 @@ const SalesSimulator = () => {
   };
 
   const handleInitiateContract = () => {
-    // In a real application, this would navigate to the contract creation page
-    // with the selected plan data
-    console.log("Initiating contract with plan:", selectedPlan);
-    console.log(
-      "Using commission table:",
-      commissionTables[selectedTable as keyof typeof commissionTables].name,
-    );
+    setShowContractFlow(true);
   };
+
+  const handleContractFlowComplete = () => {
+    setShowContractFlow(false);
+    // Reset simulator state
+    setSelectedTable("a");
+    setCreditAmount("");
+    setPaymentPlans([]);
+    setShowResults(false);
+    setSelectedPlan(null);
+
+    if (onComplete) {
+      onComplete();
+    }
+  };
+
+  if (showContractFlow) {
+    return <ContractCreationFlow onComplete={handleContractFlowComplete} />;
+  }
 
   return (
     <div className="container mx-auto p-4 bg-white">
@@ -252,15 +270,19 @@ const SalesSimulator = () => {
                   disabled={!selectedPlan}
                   className="bg-red-600 hover:bg-red-700"
                 >
-                  Aprovar Simulação <ChevronRight className="ml-2 h-4 w-4" />
+                  Iniciar Criação de Contrato{" "}
+                  <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Confirmar Simulação</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    Iniciar Criação de Contrato
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    Você está prestes a iniciar um novo contrato com base nesta
-                    simulação. Deseja prosseguir para a criação do contrato?
+                    Você será direcionado para o fluxo de criação de contrato
+                    onde poderá selecionar a tabela de comissão, escolher uma
+                    cota e cadastrar o cliente. Deseja prosseguir?
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -269,7 +291,7 @@ const SalesSimulator = () => {
                     onClick={handleInitiateContract}
                     className="bg-red-600 hover:bg-red-700"
                   >
-                    Iniciar Contrato
+                    Prosseguir
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

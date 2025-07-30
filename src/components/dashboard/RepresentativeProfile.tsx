@@ -1,5 +1,11 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import {
+  representativeService,
+  Representative,
+  documentService,
+} from "../../lib/supabase";
+import { Database } from "../../types/supabase";
 import {
   Card,
   CardContent,
@@ -71,6 +77,12 @@ interface RepresentativeProfileProps {
 const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [representative, setRepresentative] = useState<Representative | null>(
+    null,
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<Partial<Representative>>({});
   const [contractFilter, setContractFilter] = React.useState("all");
   const [accountStatus, setAccountStatus] = React.useState("");
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = React.useState(false);
@@ -78,99 +90,61 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
   const [isDeleteContractDialogOpen, setIsDeleteContractDialogOpen] =
     React.useState(false);
   const [contractToDelete, setContractToDelete] = React.useState(null);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
 
-  // Mock data - in a real app, this would come from an API
-  const representatives = [
-    {
-      id: 1,
-      name: "Carlos Oliveira",
-      email: "carlos@credicar.com",
-      phone: "(11) 99999-1234",
-      commissionTable: "A",
-      status: "Ativo",
-      totalSales: "R$ 425.000",
-      contractsCount: 28,
-      joinDate: "15/03/2023",
-      address: "Rua das Flores, 123 - São Paulo, SP",
-      cpf: "123.456.789-00",
-      birthDate: "15/08/1985",
-      commissionEarned: "R$ 17.000",
-      averageTicket: "R$ 15.178",
-      conversionRate: "68%",
-    },
-    {
-      id: 2,
-      name: "Ana Pereira",
-      email: "ana@credicar.com",
-      phone: "(11) 99999-5678",
-      commissionTable: "B",
-      status: "Ativo",
-      totalSales: "R$ 360.000",
-      contractsCount: 24,
-      joinDate: "22/01/2023",
-      address: "Av. Paulista, 456 - São Paulo, SP",
-      cpf: "987.654.321-00",
-      birthDate: "22/03/1990",
-      commissionEarned: "R$ 14.400",
-      averageTicket: "R$ 15.000",
-      conversionRate: "72%",
-    },
-    {
-      id: 3,
-      name: "Marcos Souza",
-      email: "marcos@credicar.com",
-      phone: "(11) 99999-9012",
-      commissionTable: "C",
-      status: "Ativo",
-      totalSales: "R$ 325.000",
-      contractsCount: 21,
-      joinDate: "08/05/2023",
-      address: "Rua Augusta, 789 - São Paulo, SP",
-      cpf: "456.789.123-00",
-      birthDate: "08/12/1988",
-      commissionEarned: "R$ 13.000",
-      averageTicket: "R$ 15.476",
-      conversionRate: "65%",
-    },
-    {
-      id: 4,
-      name: "Juliana Costa",
-      email: "juliana@credicar.com",
-      phone: "(11) 99999-3456",
-      commissionTable: "A",
-      status: "Inativo",
-      totalSales: "R$ 290.000",
-      contractsCount: 19,
-      joinDate: "12/02/2023",
-      address: "Rua Oscar Freire, 321 - São Paulo, SP",
-      cpf: "789.123.456-00",
-      birthDate: "12/07/1992",
-      commissionEarned: "R$ 11.600",
-      averageTicket: "R$ 15.263",
-      conversionRate: "58%",
-    },
-    {
-      id: 5,
-      name: "Ricardo Gomes",
-      email: "ricardo@credicar.com",
-      phone: "(11) 99999-7890",
-      commissionTable: "D",
-      status: "Ativo",
-      totalSales: "R$ 225.000",
-      contractsCount: 15,
-      joinDate: "30/06/2023",
-      address: "Rua Consolação, 654 - São Paulo, SP",
-      cpf: "321.654.987-00",
-      birthDate: "30/11/1987",
-      commissionEarned: "R$ 9.000",
-      averageTicket: "R$ 15.000",
-      conversionRate: "60%",
-    },
-  ];
+  // Load representative data
+  useEffect(() => {
+    const loadRepresentative = async () => {
+      if (!id) return;
 
-  const representative = representatives.find(
-    (rep) => rep.id === parseInt(id || "1"),
-  );
+      try {
+        setIsLoading(true);
+        const data = await representativeService.getById(id);
+        setRepresentative(data);
+        if (data) {
+          setAccountStatus(data.status);
+          setEditData(data);
+          // Load documents
+          await loadDocuments(id);
+        }
+      } catch (error) {
+        console.error("Error loading representative:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRepresentative();
+  }, [id]);
+
+  // Load documents for representative
+  const loadDocuments = async (representativeId: string) => {
+    try {
+      setIsLoadingDocuments(true);
+      // First, ensure required documents exist
+      await documentService.createRequiredDocuments(representativeId);
+      // Then load all documents
+      const docs =
+        await documentService.getRepresentativeDocuments(representativeId);
+      setDocuments(docs);
+    } catch (error) {
+      console.error("Error loading documents:", error);
+      setDocuments([]);
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen bg-background items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Carregando...</h1>
+        </div>
+      </div>
+    );
+  }
 
   if (!representative) {
     return (
@@ -188,12 +162,28 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
     );
   }
 
-  // Set initial account status if not set
-  React.useEffect(() => {
-    if (!accountStatus && representative) {
-      setAccountStatus(representative.status);
+  const handleEditProfile = () => {
+    setIsEditing(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!representative) return;
+
+    try {
+      await representativeService.update(representative.id, editData);
+      setRepresentative({ ...representative, ...editData });
+      setIsEditing(false);
+      alert("Perfil atualizado com sucesso!");
+    } catch (error) {
+      console.error("Error updating representative:", error);
+      alert("Erro ao atualizar perfil. Tente novamente.");
     }
-  }, [representative, accountStatus]);
+  };
+
+  const handleCancelEdit = () => {
+    setEditData(representative);
+    setIsEditing(false);
+  };
 
   // Mock all contracts for this representative
   const allContracts = [
@@ -289,9 +279,20 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
     setNewPassword("");
   };
 
-  const handleStatusChange = (newStatus) => {
-    setAccountStatus(newStatus);
-    console.log("Changing account status to:", newStatus);
+  const handleStatusChange = async (newStatus) => {
+    if (!representative) return;
+
+    try {
+      await representativeService.update(representative.id, {
+        status: newStatus,
+      });
+      setAccountStatus(newStatus);
+      setRepresentative({ ...representative, status: newStatus });
+      console.log("Account status changed to:", newStatus);
+    } catch (error) {
+      console.error("Error changing status:", error);
+      alert("Erro ao alterar status. Tente novamente.");
+    }
   };
 
   const handleViewContract = (contractId: string) => {
@@ -317,6 +318,71 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
       // Here you would make the API call to delete the contract
       setIsDeleteContractDialogOpen(false);
       setContractToDelete(null);
+    }
+  };
+
+  // Handle document approval
+  const handleApproveDocument = async (documentId: number) => {
+    try {
+      await documentService.updateDocumentStatus(documentId, "Aprovado");
+      // Reload documents
+      if (id) {
+        await loadDocuments(id);
+      }
+      alert("Documento aprovado com sucesso!");
+    } catch (error) {
+      console.error("Error approving document:", error);
+      alert("Erro ao aprovar documento. Tente novamente.");
+    }
+  };
+
+  // Handle document rejection
+  const handleRejectDocument = async (documentId: number) => {
+    const reason = prompt("Motivo da rejeição:");
+    if (reason) {
+      try {
+        await documentService.updateDocumentStatus(documentId, "Reprovado");
+        // Reload documents
+        if (id) {
+          await loadDocuments(id);
+        }
+        alert("Documento rejeitado com sucesso!");
+      } catch (error) {
+        console.error("Error rejecting document:", error);
+        alert("Erro ao rejeitar documento. Tente novamente.");
+      }
+    }
+  };
+
+  // Handle approve all documents and grant dashboard access
+  const handleApproveAllDocuments = async () => {
+    if (!representative || !id) return;
+
+    const confirmApproval = confirm(
+      "Tem certeza que deseja aprovar todos os documentos e conceder acesso ao dashboard para este representante?",
+    );
+
+    if (confirmApproval) {
+      try {
+        // Use a mock admin ID for now - in production this would come from the current user
+        const adminId = "admin-user-id";
+        await documentService.approveAllDocuments(id, adminId);
+
+        // Reload representative data and documents
+        const updatedRep = await representativeService.getById(id);
+        setRepresentative(updatedRep);
+        if (updatedRep) {
+          setAccountStatus(updatedRep.status);
+        }
+        await loadDocuments(id);
+
+        alert(
+          "Todos os documentos foram aprovados e o representante agora tem acesso ao dashboard!",
+        );
+      } catch (error) {
+        console.error("Error approving all documents:", error);
+        alert("Erro ao aprovar documentos. Tente novamente.");
+      }
     }
   };
 
@@ -346,8 +412,10 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
               <div>
                 <h1 className="text-2xl font-bold">{representative.name}</h1>
                 <p className="text-muted-foreground">
-                  ID: {representative.id.toString().padStart(3, "0")} •{" "}
-                  {representative.status}
+                  ID:{" "}
+                  {representative.commission_code ||
+                    representative.id.substring(0, 8)}{" "}
+                  • {representative.status}
                 </p>
               </div>
             </div>
@@ -370,10 +438,19 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
               <Key className="h-4 w-4 mr-2" />
               Alterar Senha
             </Button>
-            <Button>
-              <Edit className="h-4 w-4 mr-2" />
-              Editar Perfil
-            </Button>
+            {isEditing ? (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleCancelEdit}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSaveProfile}>Salvar</Button>
+              </div>
+            ) : (
+              <Button onClick={handleEditProfile}>
+                <Edit className="h-4 w-4 mr-2" />
+                Editar Perfil
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -391,10 +468,19 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {representative.totalSales}
+                R${" "}
+                {representative.total_sales.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
               </div>
               <p className="text-xs text-muted-foreground">
-                Ticket médio: {representative.averageTicket}
+                Ticket médio: R${" "}
+                {representative.contracts_count > 0
+                  ? (
+                      representative.total_sales /
+                      representative.contracts_count
+                    ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+                  : "0,00"}
               </p>
             </CardContent>
           </Card>
@@ -405,10 +491,10 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {representative.contractsCount}
+                {representative.contracts_count}
               </div>
               <p className="text-xs text-muted-foreground">
-                Taxa de conversão: {representative.conversionRate}
+                Taxa de conversão: 68%
               </p>
             </CardContent>
           </Card>
@@ -419,10 +505,13 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {representative.commissionEarned}
+                R${" "}
+                {(representative.total_sales * 0.04).toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
               </div>
               <p className="text-xs text-muted-foreground">
-                Tabela {representative.commissionTable}
+                Tabela {representative.commission_table}
               </p>
             </CardContent>
           </Card>
@@ -442,7 +531,10 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground">
-                Desde {representative.joinDate}
+                Desde{" "}
+                {new Date(representative.created_at).toLocaleDateString(
+                  "pt-BR",
+                )}
               </p>
             </CardContent>
           </Card>
@@ -461,67 +553,116 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Email</p>
-                    <p className="text-sm text-muted-foreground">
-                      {representative.email}
-                    </p>
+                    {isEditing ? (
+                      <Input
+                        value={editData.email || ""}
+                        onChange={(e) =>
+                          setEditData({ ...editData, email: e.target.value })
+                        }
+                        className="text-sm"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {representative.email}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">Telefone</p>
-                    <p className="text-sm text-muted-foreground">
-                      {representative.phone}
-                    </p>
+                    {isEditing ? (
+                      <Input
+                        value={editData.phone || ""}
+                        onChange={(e) =>
+                          setEditData({ ...editData, phone: e.target.value })
+                        }
+                        className="text-sm"
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {representative.phone || "N/A"}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">CPF</p>
+                  <p className="text-sm font-medium">CNPJ</p>
                   <p className="text-sm text-muted-foreground">
-                    {representative.cpf}
+                    {representative.cnpj || "N/A"}
                   </p>
                 </div>
               </div>
               <div className="space-y-4">
-                <div className="flex items-center space-x-3">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Data de Nascimento</p>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Razão Social</p>
+                  {isEditing ? (
+                    <Input
+                      value={editData.razao_social || ""}
+                      onChange={(e) =>
+                        setEditData({
+                          ...editData,
+                          razao_social: e.target.value,
+                        })
+                      }
+                      className="text-sm"
+                    />
+                  ) : (
                     <p className="text-sm text-muted-foreground">
-                      {representative.birthDate}
+                      {representative.razao_social || "N/A"}
                     </p>
-                  </div>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Data de Cadastro</p>
                   <p className="text-sm text-muted-foreground">
-                    {representative.joinDate}
+                    {new Date(representative.created_at).toLocaleDateString(
+                      "pt-BR",
+                    )}
                   </p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Tabela de Comissão</p>
                   <p className="text-sm text-muted-foreground">
-                    Tabela {representative.commissionTable}
+                    Tabela {representative.commission_table}
                   </p>
                 </div>
               </div>
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Endereço</p>
-                  <p className="text-sm text-muted-foreground">
-                    {representative.address}
-                  </p>
+                  <p className="text-sm font-medium">Ponto de Venda</p>
+                  {isEditing ? (
+                    <Input
+                      value={editData.ponto_venda || ""}
+                      onChange={(e) =>
+                        setEditData({
+                          ...editData,
+                          ponto_venda: e.target.value,
+                        })
+                      }
+                      className="text-sm"
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {representative.ponto_venda || "N/A"}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Taxa de Conversão</p>
-                  <p className="text-sm text-muted-foreground">
-                    {representative.conversionRate}
-                  </p>
+                  <p className="text-sm text-muted-foreground">68%</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Ticket Médio</p>
                   <p className="text-sm text-muted-foreground">
-                    {representative.averageTicket}
+                    R${" "}
+                    {representative.contracts_count > 0
+                      ? (
+                          representative.total_sales /
+                          representative.contracts_count
+                        ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })
+                      : "0,00"}
                   </p>
                 </div>
               </div>
@@ -532,102 +673,110 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
         {/* Documents Section */}
         <Card>
           <CardHeader>
-            <CardTitle>Documentos</CardTitle>
-            <CardDescription>
-              Status dos documentos enviados pelo representante
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Documentos</CardTitle>
+                <CardDescription>
+                  Status dos documentos enviados pelo representante
+                </CardDescription>
+              </div>
+              {documents.some((doc) => doc.status === "Pendente") && (
+                <Button
+                  onClick={handleApproveAllDocuments}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Aprovar Todos
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              {[
-                {
-                  name: "Cartão do CNPJ",
-                  status: "approved",
-                  uploadDate: "15/12/2023",
-                },
-                {
-                  name: "Comprovante de Endereço",
-                  status: "approved",
-                  uploadDate: "15/12/2023",
-                },
-                {
-                  name: "Certidão de Antecedente Criminal",
-                  status: "pending",
-                  uploadDate: "16/12/2023",
-                },
-                {
-                  name: "Certidão Negativa Civil",
-                  status: "approved",
-                  uploadDate: "15/12/2023",
-                },
-              ].map((doc, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{doc.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Enviado em {doc.uploadDate}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={
-                        doc.status === "approved"
-                          ? "default"
-                          : doc.status === "pending"
-                            ? "outline"
-                            : "destructive"
-                      }
+            {isLoadingDocuments ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">
+                  Carregando documentos...
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {documents.map((doc) => {
+                  const uploadDate = doc.uploaded_at
+                    ? new Date(doc.uploaded_at).toLocaleDateString("pt-BR")
+                    : "Não enviado";
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
                     >
-                      {doc.status === "approved"
-                        ? "Aprovado"
-                        : doc.status === "pending"
-                          ? "Pendente"
-                          : "Rejeitado"}
-                    </Badge>
-                    <Button variant="ghost" size="sm">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    {doc.status === "pending" && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            console.log(`Approving document: ${doc.name}`);
-                            // Here you would update the document status
-                          }}
-                          className="text-green-600 hover:text-green-700"
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">
+                            {doc.document_type}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {doc.uploaded_at
+                              ? `Enviado em ${uploadDate}`
+                              : "Documento não enviado"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            doc.status === "Aprovado"
+                              ? "default"
+                              : doc.status === "Pendente"
+                                ? "outline"
+                                : "destructive"
+                          }
                         >
-                          <CheckCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            const reason = prompt("Motivo da rejeição:");
-                            if (reason) {
-                              console.log(
-                                `Rejecting document: ${doc.name}, Reason: ${reason}`,
-                              );
-                              // Here you would update the document status and add rejection reason
-                            }
-                          }}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </>
-                    )}
+                          {doc.status}
+                        </Badge>
+                        {doc.file_url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(doc.file_url, "_blank")}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {doc.status === "Pendente" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleApproveDocument(doc.id)}
+                              className="text-green-600 hover:text-green-700"
+                              title="Aprovar documento"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRejectDocument(doc.id)}
+                              className="text-red-600 hover:text-red-700"
+                              title="Rejeitar documento"
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {documents.length === 0 && (
+                  <div className="col-span-2 text-center py-8 text-muted-foreground">
+                    Nenhum documento encontrado.
                   </div>
-                </div>
-              ))}
-            </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
