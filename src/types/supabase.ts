@@ -101,6 +101,82 @@ export type Database = {
         }
         Relationships: []
       }
+      contract_documents: {
+        Row: {
+          contract_id: number
+          created_at: string | null
+          document_type: string
+          document_url: string
+          id: number
+          uploaded_at: string | null
+        }
+        Insert: {
+          contract_id: number
+          created_at?: string | null
+          document_type: string
+          document_url: string
+          id?: number
+          uploaded_at?: string | null
+        }
+        Update: {
+          contract_id?: number
+          created_at?: string | null
+          document_type?: string
+          document_url?: string
+          id?: number
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_documents_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      contract_signatures: {
+        Row: {
+          client_ip: string | null
+          contract_id: number
+          created_at: string | null
+          id: number
+          signature_image_url: string
+          signed_at: string | null
+          signer_cpf: string
+          signer_name: string
+        }
+        Insert: {
+          client_ip?: string | null
+          contract_id: number
+          created_at?: string | null
+          id?: number
+          signature_image_url: string
+          signed_at?: string | null
+          signer_cpf: string
+          signer_name: string
+        }
+        Update: {
+          client_ip?: string | null
+          contract_id?: number
+          created_at?: string | null
+          id?: number
+          signature_image_url?: string
+          signed_at?: string | null
+          signer_cpf?: string
+          signer_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contract_signatures_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_templates: {
         Row: {
           content: string
@@ -162,6 +238,7 @@ export type Database = {
           status: Database["public"]["Enums"]["contract_status"]
           total_installments: number
           total_value: string | null
+          updated_at: string | null
         }
         Insert: {
           client_id: number
@@ -182,6 +259,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["contract_status"]
           total_installments?: number
           total_value?: string | null
+          updated_at?: string | null
         }
         Update: {
           client_id?: number
@@ -202,6 +280,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["contract_status"]
           total_installments?: number
           total_value?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {

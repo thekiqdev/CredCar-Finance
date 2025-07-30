@@ -1528,3 +1528,128 @@ export const authService = {
     }
   },
 };
+
+// Signature service
+export const signatureService = {
+  // Get contract for public signature
+  async getContractForSignature(contractId: string) {
+    try {
+      const { data, error } = await supabase
+        .from("contracts")
+        .select(
+          `
+          id,
+          contract_code,
+          contract_content,
+          status,
+          clients!inner (
+            full_name,
+            email
+          )
+        `,
+        )
+        .eq("id", contractId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching contract for signature:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(
+        "Error in signatureService.getContractForSignature:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  // Save signature data
+  async saveSignature(signatureData: {
+    contract_id: number;
+    signer_name: string;
+    signer_cpf: string;
+    signature_image_url: string;
+    client_ip: string;
+  }) {
+    try {
+      const { data, error } = await supabase
+        .from("contract_signatures")
+        .insert({
+          ...signatureData,
+          signed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error saving signature:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in signatureService.saveSignature:", error);
+      throw error;
+    }
+  },
+
+  // Save contract document
+  async saveContractDocument(documentData: {
+    contract_id: number;
+    document_type: string;
+    document_url: string;
+  }) {
+    try {
+      const { data, error } = await supabase
+        .from("contract_documents")
+        .insert({
+          ...documentData,
+          uploaded_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error saving contract document:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in signatureService.saveContractDocument:", error);
+      throw error;
+    }
+  },
+
+  // Update contract status after signature
+  async updateContractStatusAfterSignature(contractId: number) {
+    try {
+      const { data, error } = await supabase
+        .from("contracts")
+        .update({
+          status:
+            "Em Análise" as Database["public"]["Enums"]["contract_status"],
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", contractId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating contract status after signature:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(
+        "Error in signatureService.updateContractStatusAfterSignature:",
+        error,
+      );
+      throw error;
+    }
+  },
+};

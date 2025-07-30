@@ -50,6 +50,8 @@ import {
   Edit3,
   Trash2,
   Edit,
+  PenTool,
+  ExternalLink,
 } from "lucide-react";
 import { Editor } from "@tinymce/tinymce-react";
 import {
@@ -689,6 +691,44 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
           </div>
           <div className="flex items-center gap-2">
             {getStatusBadge(contract.status)}
+
+            {/* Public Signature Link - Show for Pendente status */}
+            {contract.status === "Pendente" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const signatureUrl = `${window.location.origin}/sign/${contract.id}`;
+                  navigator.clipboard.writeText(signatureUrl);
+                  alert(
+                    "Link de assinatura copiado para a área de transferência!",
+                  );
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <PenTool className="mr-2 h-4 w-4" />
+                Enviar para Assinatura
+              </Button>
+            )}
+
+            {/* Show signature link for approved contracts too */}
+            {contract.status === "Aprovado" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const signatureUrl = `${window.location.origin}/sign/${contract.id}`;
+                  navigator.clipboard.writeText(signatureUrl);
+                  alert(
+                    "Link de assinatura copiado para a área de transferência!",
+                  );
+                }}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <PenTool className="mr-2 h-4 w-4" />
+                Copiar Link de Assinatura
+              </Button>
+            )}
 
             {/* Admin Actions */}
             {isAdmin &&

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { authService } from "../../lib/supabase";
+import { storageService } from "../../lib/storage";
 import {
   Card,
   CardContent,
@@ -108,8 +109,24 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     setIsUploading(true);
 
     try {
-      // Simulate file upload
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (!currentUser) {
+        throw new Error("Usuário não autenticado");
+      }
+
+      // Find the document to get its name
+      const document = documents.find((doc) => doc.id === documentId);
+      if (!document) {
+        throw new Error("Documento não encontrado");
+      }
+
+      // Upload file to storage
+      const fileUrl = await storageService.uploadRepresentativeDocument(
+        currentUser.id,
+        document.name,
+        file,
+      );
+
+      console.log(`Document ${documentId} uploaded successfully:`, fileUrl);
 
       setDocuments((prev) =>
         prev.map((doc) =>
@@ -117,9 +134,13 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         ),
       );
 
-      console.log(`Document ${documentId} uploaded:`, file.name);
+      // TODO: Save document info to database
+      // This should create a record in representative_documents table
     } catch (error) {
       console.error("Upload error:", error);
+      alert(
+        `Erro ao fazer upload: ${error instanceof Error ? error.message : "Erro desconhecido"}`,
+      );
     } finally {
       setIsUploading(false);
     }
