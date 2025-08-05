@@ -60,7 +60,8 @@ import {
   contractService,
   contractTemplateService,
 } from "@/lib/supabase";
-import { Database } from "@/types/supabase";
+import { electronicSignatureService } from "@/lib/supabase";
+import { ContractStatus } from "@/types/supabase";
 
 type ContractStatus = Database["public"]["Enums"]["contract_status"];
 
@@ -144,6 +145,18 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
   const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [signatureLinks, setSignatureLinks] = useState<any[]>([]);
+  const [isLoadingSignatures, setIsLoadingSignatures] = useState(false);
+  const [contractDocuments, setContractDocuments] = useState<any[]>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+  const [isDeletingDocument, setIsDeletingDocument] = useState<string | null>(
+    null,
+  );
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [signatureBlockData, setSignatureBlockData] = useState({
+    signatoryName: "",
+  });
+  const [signatureBlocks, setSignatureBlocks] = useState<any[]>([]);
   const editorRef = useRef<any>(null);
 
   const currentUser = authService.getCurrentUser();
@@ -164,7 +177,16 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
 
     loadContractDetails();
     loadAvailableTemplates();
+    loadContractDocuments();
   }, [contractId]);
+
+  // Load signature links after contract is loaded
+  useEffect(() => {
+    if (contract && contractId) {
+      loadSignatureLinks();
+      loadSignatureBlocks();
+    }
+  }, [contract, contractId]);
 
   // Check if edit mode should be enabled after contract is loaded
   useEffect(() => {
@@ -188,6 +210,263 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
       // Don't show error for templates, it's not critical
     } finally {
       setIsLoadingTemplates(false);
+    }
+  };
+
+  const loadSignatureBlocks = async () => {
+    if (!contractId) return;
+
+    try {
+      // Extract signature blocks from contract content
+      if (contract?.contract_content) {
+        const blocks = extractSignatureBlocksFromContent(
+          contract.contract_content,
+        );
+        setSignatureBlocks(blocks);
+      }
+    } catch (error) {
+      console.error("Error loading signature blocks:", error);
+      setSignatureBlocks([]);
+    }
+  };
+
+  const extractSignatureBlocksFromContent = (content: string) => {
+    const blocks = [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, "text/html");
+    const signatureBlockDivs = doc.querySelectorAll(".signature-block");
+
+    signatureBlockDivs.forEach((div) => {
+      const blockId = div.getAttribute("data-block-id");
+      const signatoryName = div.getAttribute("data-signatory-name");
+
+      if (blockId && signatoryName) {
+        blocks.push({
+          id: blockId,
+          signatoryName: signatoryName,
+          status: "pending", // Default status
+          signatureUrl: null,
+          signedAt: null,
+        });
+      }
+    });
+
+    return blocks;
+  };
+
+  const generateSignatureLink = (blockId: string) => {
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/sign-block/${contractId}/${blockId}`;
+  };
+
+  const handleInsertSignatureBlock = () => {
+    if (!signatureBlockData.signatoryName.trim()) {
+      alert("Por favor, informe a identificação do signatário");
+      return;
+    }
+
+    if (!editorRef.current) {
+      alert("Editor não está disponível");
+      return;
+    }
+
+    // Generate unique signature ID
+    const signatureId = `signature_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const signerName = signatureBlockData.signatoryName.trim();
+
+    // Prompt for CPF
+    const signerCPF = prompt(
+      `Por favor, informe o CPF de ${signerName} (apenas números):`,
+    );
+    if (!signerCPF || !signerCPF.trim()) {
+      alert("CPF é obrigatório para criar o campo de assinatura");
+      return;
+    }
+
+    // Validate CPF format (basic validation)
+    const cleanCPF = signerCPF.replace(/\D/g, "");
+    if (cleanCPF.length !== 11) {
+      alert("CPF deve conter 11 dígitos");
+      return;
+    }
+
+    // Create simple shortcode instead of complex HTML
+    const signatureShortcode = `[SIGNATURE id="${signatureId}" name="${signerName}" cpf="${cleanCPF}"]`;
+
+    // Insert the shortcode into the editor
+    editorRef.current.insertContent(signatureShortcode);
+
+    // Reset form and close modal
+    setSignatureBlockData({ signatoryName: "" });
+    setIsSignatureModalOpen(false);
+
+    alert(
+      `✅ Campo de assinatura criado com sucesso para "${signerName}"!\n\nQuando você salvar o contrato, um link de assinatura será gerado automaticamente.`,
+    );
+  };
+
+  const handleDeleteDocument = async (
+    documentId: string,
+    documentType: string,
+  ) => {
+    if (!isAdmin) {
+      alert("Apenas administradores podem excluir documentos");
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja excluir este documento (${documentType})? Esta ação não pode ser desfeita.`,
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      setIsDeletingDocument(documentId);
+
+      if (documentId.startsWith("signature-")) {
+        // Delete signature document
+        const signatureId = documentId.replace("signature-", "");
+        const { error } = await supabase
+          .from("contract_signatures")
+          .delete()
+          .eq("id", signatureId);
+
+        if (error) {
+          throw new Error(`Erro ao excluir assinatura: ${error.message}`);
+        }
+      } else if (documentId.startsWith("document-")) {
+        // Delete regular document
+        const docId = documentId.replace("document-", "");
+        const { error } = await supabase
+          .from("contract_documents")
+          .delete()
+          .eq("id", docId);
+
+        if (error) {
+          throw new Error(`Erro ao excluir documento: ${error.message}`);
+        }
+      }
+
+      // Reload documents
+      await loadContractDocuments();
+      alert("Documento excluído com sucesso!");
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao excluir documento: ${errorMessage}`);
+    } finally {
+      setIsDeletingDocument(null);
+    }
+  };
+
+  const loadSignatureLinks = async () => {
+    if (!contractId) return;
+
+    try {
+      setIsLoadingSignatures(true);
+      console.log("Loading signature links for contract:", contractId);
+
+      // First check if contract has signature fields in content
+      if (contract?.contract_content) {
+        const signatureFields =
+          await electronicSignatureService.extractSignatureFields(
+            contractId,
+            contract.contract_content,
+          );
+        console.log("Extracted signature fields:", signatureFields);
+
+        if (signatureFields.length > 0) {
+          // Save signature fields if they don't exist
+          await electronicSignatureService.saveSignatureFields(signatureFields);
+        }
+      }
+
+      const links =
+        await electronicSignatureService.generateSignatureLinks(contractId);
+      console.log("Generated signature links:", links);
+      setSignatureLinks(links);
+    } catch (error) {
+      console.error("Error loading signature links:", error);
+      setSignatureLinks([]);
+    } finally {
+      setIsLoadingSignatures(false);
+    }
+  };
+
+  const loadContractDocuments = async () => {
+    if (!contractId) return;
+
+    try {
+      setIsLoadingDocuments(true);
+
+      // Load contract signatures (traditional signatures with documents)
+      const { data: signatures, error: signaturesError } = await supabase
+        .from("contract_signatures")
+        .select("*")
+        .eq("contract_id", contractId)
+        .order("signed_at", { ascending: false });
+
+      if (signaturesError) {
+        console.error("Error loading signatures:", signaturesError);
+      }
+
+      // Load contract documents
+      const { data: documents, error: documentsError } = await supabase
+        .from("contract_documents")
+        .select("*")
+        .eq("contract_id", contractId)
+        .order("uploaded_at", { ascending: false });
+
+      if (documentsError) {
+        console.error("Error loading documents:", documentsError);
+      }
+
+      // Combine signatures and documents
+      const allDocuments = [];
+
+      // Add signature documents
+      if (signatures) {
+        signatures.forEach((signature) => {
+          allDocuments.push({
+            id: `signature-${signature.id}`,
+            type: "Assinatura Digital",
+            name: `Assinatura de ${signature.signer_name}`,
+            url: signature.signature_image_url,
+            uploadedBy: signature.signer_name,
+            uploadedAt: signature.signed_at,
+            additionalInfo: {
+              cpf: signature.signer_cpf.replace(
+                /(\d{3})(\d{3})(\d{3})(\d{2})/,
+                "$1.$2.$3-$4",
+              ),
+              ip: signature.client_ip,
+            },
+          });
+        });
+      }
+
+      // Add other documents
+      if (documents) {
+        documents.forEach((document) => {
+          allDocuments.push({
+            id: `document-${document.id}`,
+            type: document.document_type,
+            name: document.document_type,
+            url: document.document_url,
+            uploadedBy: "Sistema", // Could be enhanced to track who uploaded
+            uploadedAt: document.uploaded_at,
+            additionalInfo: {},
+          });
+        });
+      }
+
+      setContractDocuments(allDocuments);
+    } catch (error) {
+      console.error("Error loading contract documents:", error);
+      setContractDocuments([]);
+    } finally {
+      setIsLoadingDocuments(false);
     }
   };
 
@@ -364,6 +643,16 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
       setContract({ ...contract, contract_content: content });
       setIsEditingContent(false);
       setIsEditMode(false); // Exit edit mode after saving
+
+      // Load signature blocks from the updated content
+      await loadSignatureBlocks();
+
+      // Generate signature links automatically if signature fields are present
+      await generateSignatureLinksIfNeeded(content);
+
+      // Reload signature links to show newly created ones
+      await loadSignatureLinks();
+
       alert("Conteúdo do contrato salvo com sucesso!");
     } catch (err) {
       console.error("Error saving contract content:", err);
@@ -607,6 +896,102 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
     return new Date(dateString).toLocaleDateString("pt-BR");
   };
 
+  const generateSignatureLinksIfNeeded = async (content: string) => {
+    if (!contract) return;
+
+    try {
+      const { electronicSignatureService } = await import("@/lib/supabase");
+
+      // Extract signature fields from content
+      const signatureFields =
+        await electronicSignatureService.extractSignatureFields(
+          contract.id.toString(),
+          content,
+        );
+
+      if (signatureFields.length > 0) {
+        // Save signature fields to database
+        await electronicSignatureService.saveSignatureFields(signatureFields);
+
+        // Reload signature links
+        await loadSignatureLinks();
+
+        console.log(
+          `Generated ${signatureFields.length} signature links automatically`,
+        );
+      }
+    } catch (error) {
+      console.error("Error generating signature links automatically:", error);
+    }
+  };
+
+  const renderContractContentWithSignatures = (
+    content: string,
+    signatureLinks: any[],
+  ) => {
+    if (!content) return content;
+
+    let processedContent = content;
+    const processedSignatureIds = new Set<string>();
+
+    // Process shortcodes and replace with signature content
+    const shortcodePattern =
+      /\[SIGNATURE id="([^"]+)" name="([^"]+)" cpf="([^"]+)"\]/g;
+
+    processedContent = processedContent.replace(
+      shortcodePattern,
+      (match, id, name, cpf) => {
+        // Check if this signature ID was already processed
+        if (processedSignatureIds.has(id)) {
+          return ""; // Return empty string to avoid duplication
+        }
+        processedSignatureIds.add(id);
+
+        const formattedCPF = cpf.replace(
+          /(\d{3})(\d{3})(\d{3})(\d{2})/,
+          "$1.$2.$3-$4",
+        );
+
+        // Find the corresponding signature link
+        const signatureLink = signatureLinks.find(
+          (link) => link.signatureId === id,
+        );
+
+        if (
+          signatureLink &&
+          signatureLink.status === "signed" &&
+          signatureLink.signatureImageUrl
+        ) {
+          // Signed signature - simple layout
+          return `<div style="text-align: center; margin: 20px 0;">
+            <img src="${signatureLink.signatureImageUrl}" alt="Assinatura de ${name}" style="max-width: 300px; max-height: 80px; display: block; margin: 0 auto;" />
+            <hr style="border: none; border-top: 1px solid #ccc; margin: 15px 0;" />
+            <div style="font-size: 14px;">
+              <div><strong>Nome:</strong> ${name}</div>
+              <div><strong>CPF:</strong> ${formattedCPF}</div>
+              <div style="margin-top: 8px; font-size: 12px;">Assinado em: ${signatureLink.signedAt ? new Date(signatureLink.signedAt).toLocaleString("pt-BR") : "Data não disponível"}</div>
+            </div>
+          </div>`;
+        } else {
+          // Pending signature - simple layout
+          return `<div style="text-align: center; margin: 20px 0;">
+            <div style="border: 1px dashed #ccc; padding: 20px; display: inline-block; min-width: 300px; min-height: 80px; display: flex; align-items: center; justify-content: center;">
+              <span style="color: #666; font-weight: bold;">AGUARDANDO ASSINATURA</span>
+            </div>
+            <hr style="border: none; border-top: 1px solid #ccc; margin: 15px 0;" />
+            <div style="font-size: 14px;">
+              <div><strong>Nome:</strong> ${name}</div>
+              <div><strong>CPF:</strong> ${formattedCPF}</div>
+              <div style="margin-top: 8px; font-size: 12px;">Aguardando assinatura</div>
+            </div>
+          </div>`;
+        }
+      },
+    );
+
+    return processedContent;
+  };
+
   const handleBack = () => {
     if (onBack) {
       onBack();
@@ -692,7 +1077,21 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
           <div className="flex items-center gap-2">
             {getStatusBadge(contract.status)}
 
-            {/* Public Signature Link - Show for Pendente status */}
+            {/* View-Only Link - Always available */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const viewOnlyUrl = `${window.location.origin}/view/${contract.id}`;
+                window.open(viewOnlyUrl, "_blank");
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              Ver Contrato
+            </Button>
+
+            {/* Traditional Signature Link - Show for Pendente status */}
             {contract.status === "Pendente" && (
               <Button
                 variant="outline"
@@ -701,13 +1100,13 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                   const signatureUrl = `${window.location.origin}/sign/${contract.id}`;
                   navigator.clipboard.writeText(signatureUrl);
                   alert(
-                    "Link de assinatura copiado para a área de transferência!",
+                    "Link de assinatura tradicional copiado para a área de transferência!",
                   );
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-green-600 hover:bg-green-700 text-white"
               >
                 <PenTool className="mr-2 h-4 w-4" />
-                Enviar para Assinatura
+                Link Tradicional
               </Button>
             )}
 
@@ -853,6 +1252,10 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                     <DialogDescription>
                       Tem certeza que deseja excluir o contrato{" "}
                       {contract.contract_code}? Esta ação não pode ser desfeita.
+                      <br />
+                      <br />
+                      <strong>Nota:</strong> Você só pode excluir contratos com
+                      status Pendente ou Reprovado.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
@@ -944,6 +1347,7 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
             <TabsTrigger value="client">Cliente</TabsTrigger>
             <TabsTrigger value="payment">Pagamentos</TabsTrigger>
             <TabsTrigger value="commission">Comissão</TabsTrigger>
+            <TabsTrigger value="signatures">Assinaturas</TabsTrigger>
             <TabsTrigger value="content">Conteúdo do Contrato</TabsTrigger>
             <TabsTrigger value="documents">Documentos</TabsTrigger>
           </TabsList>
@@ -1213,6 +1617,69 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                 </CardContent>
               </Card>
             </div>
+
+            {/* Signers Section */}
+            {signatureLinks.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PenTool className="h-5 w-5" />
+                    Assinantes
+                  </CardTitle>
+                  <CardDescription>
+                    Links de assinatura eletrônica gerados automaticamente.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {signatureLinks.map((link, index) => (
+                      <div
+                        key={link.signatureId}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <User className="h-6 w-6 text-blue-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-lg text-gray-900">
+                              {link.signerName}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              CPF:{" "}
+                              {link.signerCPF.replace(
+                                /(\d{3})(\d{3})(\d{3})(\d{2})/,
+                                "$1.$2.$3-$4",
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            link.status === "signed"
+                              ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-300"
+                              : "bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-300"
+                          }
+                        >
+                          {link.status === "signed"
+                            ? "✅ Assinado"
+                            : "⏳ Pendente"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  {isLoadingSignatures && (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-muted-foreground">
+                        Carregando links de assinatura...
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Contract Details */}
             <div className="grid gap-6 md:grid-cols-2">
@@ -1489,6 +1956,298 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
             </Card>
           </TabsContent>
 
+          <TabsContent value="signatures" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PenTool className="h-5 w-5" />
+                  Assinaturas do Contrato
+                </CardTitle>
+                <CardDescription>
+                  Assinaturas eletrônicas e tradicionais do contrato.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoadingSignatures ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">
+                      Carregando assinaturas...
+                    </p>
+                  </div>
+                ) : signatureLinks.length > 0 ? (
+                  <div className="space-y-6">
+                    {/* Electronic Signatures */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <PenTool className="h-5 w-5" />
+                        Assinaturas Eletrônicas
+                      </h3>
+                      <div className="grid gap-4">
+                        {signatureLinks.map((link) => (
+                          <div
+                            key={link.signatureId}
+                            className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <User className="h-6 w-6 text-blue-600" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold text-lg text-gray-900">
+                                      {link.signerName}
+                                    </h4>
+                                    <p className="text-sm text-gray-600">
+                                      CPF:{" "}
+                                      {link.signerCPF.replace(
+                                        /(\d{3})(\d{3})(\d{3})(\d{2})/,
+                                        "$1.$2.$3-$4",
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="ml-15 space-y-2">
+                                  <div className="text-sm text-gray-600">
+                                    <strong>🆔 ID da Assinatura:</strong>{" "}
+                                    {link.signatureId}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    <strong>🔗 Link de Assinatura:</strong>
+                                    <code className="ml-2 px-2 py-1 bg-gray-100 rounded text-xs break-all">
+                                      {link.signatureUrl}
+                                    </code>
+                                  </div>
+                                  {link.status === "signed" &&
+                                    link.signedAt && (
+                                      <div className="text-sm text-gray-600">
+                                        <strong>📅 Assinado em:</strong>{" "}
+                                        {new Date(link.signedAt).toLocaleString(
+                                          "pt-BR",
+                                        )}
+                                      </div>
+                                    )}
+                                  {link.clientIp && (
+                                    <div className="text-sm text-gray-600">
+                                      <strong>🌐 IP do Cliente:</strong>{" "}
+                                      {link.clientIp}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col items-end gap-2 ml-4">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    link.status === "signed"
+                                      ? "bg-green-100 text-green-800 hover:bg-green-100 border-green-300"
+                                      : "bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-300"
+                                  }
+                                >
+                                  {link.status === "signed"
+                                    ? "✅ Assinado"
+                                    : "⏳ Pendente"}
+                                </Badge>
+
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(
+                                        link.signatureUrl,
+                                      );
+                                      alert(
+                                        "Link de assinatura copiado para a área de transferência!",
+                                      );
+                                    }}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                  >
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    Copiar Link
+                                  </Button>
+
+                                  {link.status === "signed" &&
+                                    link.signatureImageUrl && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          window.open(
+                                            link.signatureImageUrl,
+                                            "_blank",
+                                          )
+                                        }
+                                        className="bg-green-600 hover:bg-green-700 text-white"
+                                      >
+                                        <Eye className="mr-2 h-4 w-4" />
+                                        Ver Assinatura
+                                      </Button>
+                                    )}
+
+                                  {isAdmin && (
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={async () => {
+                                        const confirmRemoval = window.confirm(
+                                          `⚠️ ATENÇÃO: Tem certeza que deseja remover a assinatura de ${link.signerName}?\n\nEsta ação irá:\n• Remover a assinatura do documento\n• Excluir os dados do banco de dados\n• Deletar o arquivo de imagem do armazenamento\n\nEsta ação NÃO PODE ser desfeita!`,
+                                        );
+
+                                        if (!confirmRemoval) return;
+
+                                        try {
+                                          console.log(
+                                            `🗑️ Starting signature removal for: ${link.signatureId}`,
+                                          );
+
+                                          await electronicSignatureService.removeSignature(
+                                            link.signatureId,
+                                          );
+
+                                          console.log(
+                                            `✅ Signature removed successfully: ${link.signatureId}`,
+                                          );
+
+                                          // Update the signature links state to remove the deleted signature
+                                          setSignatureLinks((prevLinks) =>
+                                            prevLinks.filter(
+                                              (prevLink) =>
+                                                prevLink.signatureId !==
+                                                link.signatureId,
+                                            ),
+                                          );
+
+                                          // Reload contract details to get updated content
+                                          await loadContractDetails();
+
+                                          // Reload signature links to ensure consistency
+                                          await loadSignatureLinks();
+
+                                          alert(
+                                            "✅ Assinatura removida com sucesso!",
+                                          );
+                                        } catch (error) {
+                                          console.error(
+                                            "❌ Error removing signature:",
+                                            error,
+                                          );
+                                          const errorMessage =
+                                            error instanceof Error
+                                              ? error.message
+                                              : "Erro desconhecido";
+                                          alert(
+                                            `❌ Erro ao remover assinatura: ${errorMessage}`,
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Remover
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Signature Preview */}
+                            {link.status === "signed" &&
+                              link.signatureImageUrl && (
+                                <div className="mt-4 ml-15">
+                                  <div className="border-2 border-green-200 rounded-lg p-4 bg-green-50 inline-block">
+                                    <div className="text-sm font-medium text-green-800 mb-2">
+                                      ✅ Assinatura Digital Verificada
+                                    </div>
+                                    <div className="border-2 border-green-300 rounded-lg p-3 bg-white">
+                                      <img
+                                        src={link.signatureImageUrl}
+                                        alt={`Assinatura de ${link.signerName}`}
+                                        className="max-w-[300px] max-h-[80px] object-contain mx-auto"
+                                        onError={(e) => {
+                                          console.error(
+                                            "Error loading signature image:",
+                                            e,
+                                          );
+                                          (
+                                            e.target as HTMLImageElement
+                                          ).style.display = "none";
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="text-xs text-green-600 mt-2 text-center">
+                                      Assinado em:{" "}
+                                      {link.signedAt
+                                        ? new Date(
+                                            link.signedAt,
+                                          ).toLocaleString("pt-BR")
+                                        : "Data não disponível"}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Contract Preview with Signatures */}
+                    {contract.contract_content && (
+                      <div className="mt-8">
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                          <FileText className="h-5 w-5" />
+                          Visualização do Contrato com Assinaturas
+                        </h3>
+                        <div className="bg-white border rounded-lg p-6">
+                          <div
+                            className="prose max-w-none"
+                            dangerouslySetInnerHTML={{
+                              __html: renderContractContentWithSignatures(
+                                contract.contract_content,
+                                signatureLinks,
+                              ),
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <PenTool className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-lg font-medium mb-2">
+                      Nenhuma assinatura encontrada
+                    </p>
+                    <p className="text-muted-foreground mb-4">
+                      As assinaturas aparecerão aqui quando os campos de
+                      assinatura forem inseridos no contrato e os links forem
+                      gerados.
+                    </p>
+                    {(isAdmin || canEditOrDelete || isEditMode) && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          // Switch to content tab
+                          const contentTab = document.querySelector(
+                            '[data-value="content"]',
+                          ) as HTMLElement;
+                          if (contentTab) {
+                            contentTab.click();
+                          }
+                        }}
+                      >
+                        <Edit3 className="mr-2 h-4 w-4" />
+                        Editar Conteúdo do Contrato
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="commission" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1559,18 +2318,17 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                     <FileText className="h-5 w-5" />
                     Conteúdo do Contrato
                   </div>
-                  {(contract.contract_content || isEditMode) &&
-                    (isAdmin || canEditOrDelete) && (
-                      <Button
-                        onClick={handleEditContent}
-                        variant="outline"
-                        size="sm"
-                        disabled={isEditingContent}
-                      >
-                        <Edit3 className="mr-2 h-4 w-4" />
-                        {isEditingContent ? "Editando..." : "Editar Conteúdo"}
-                      </Button>
-                    )}
+                  {(isAdmin || canEditOrDelete || isEditMode) && (
+                    <Button
+                      onClick={handleEditContent}
+                      variant="outline"
+                      size="sm"
+                      disabled={isEditingContent}
+                    >
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      {isEditingContent ? "Editando..." : "Editar Conteúdo"}
+                    </Button>
+                  )}
                 </CardTitle>
                 <CardDescription>
                   Visualize e edite o conteúdo HTML do contrato.
@@ -1635,6 +2393,47 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                           </p>
                         )}
                     </div>
+
+                    {/* Signature Block Section */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-red-800 mb-3">
+                        Inserir Bloco de Assinatura
+                      </h4>
+                      <div className="flex gap-3 items-end">
+                        <div className="flex-1">
+                          <Label
+                            htmlFor="signatory-name-input"
+                            className="text-sm"
+                          >
+                            Identificação do Signatário
+                          </Label>
+                          <Input
+                            id="signatory-name-input"
+                            value={signatureBlockData.signatoryName}
+                            onChange={(e) =>
+                              setSignatureBlockData({
+                                ...signatureBlockData,
+                                signatoryName: e.target.value,
+                              })
+                            }
+                            placeholder="Ex: Cliente, Representante, Testemunha 1"
+                            className="mt-1"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleInsertSignatureBlock}
+                          disabled={!signatureBlockData.signatoryName.trim()}
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          <PenTool className="mr-2 h-4 w-4" />
+                          Inserir na Posição do Cursor
+                        </Button>
+                      </div>
+                      <p className="text-xs text-red-600 mt-2">
+                        Clique no editor onde deseja inserir a assinatura,
+                        depois clique no botão acima.
+                      </p>
+                    </div>
                     <Editor
                       apiKey="8b0xydth3kx0va6g1ekaakj4p0snbelodd1df6m9ps5u6rnn"
                       onInit={(evt, editor) => {
@@ -1645,166 +2444,125 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                           if (editedContent && editor) {
                             editor.setContent(editedContent);
                           }
-                        }, 100);
+                        }, 200);
                       }}
                       initialValue=""
                       init={{
                         height: 500,
-                        menubar: true,
+                        menubar: false,
                         directionality: "ltr",
+                        skin: "oxide",
+                        content_css: "default",
+                        promotion: false,
+                        convert_urls: false,
+                        relative_urls: false,
+                        remove_script_host: false,
+                        document_base_url: window.location.origin,
                         plugins: [
                           "advlist",
                           "autolink",
                           "lists",
                           "link",
-                          "image",
                           "charmap",
-                          "preview",
                           "anchor",
                           "searchreplace",
                           "visualblocks",
                           "code",
-                          "fullscreen",
                           "insertdatetime",
-                          "media",
                           "table",
-                          "help",
                           "wordcount",
-                          "emoticons",
-                          "template",
-                          "codesample",
+                          "help",
                         ],
                         toolbar:
-                          "undo redo | blocks | bold italic underline strikethrough | " +
+                          "undo redo | formatselect | bold italic underline strikethrough | " +
                           "alignleft aligncenter alignright alignjustify | " +
-                          "bullist numlist outdent indent | removeformat | help | " +
-                          "table tabledelete | tableprops tablerowprops tablecellprops | " +
-                          "tableinsertrowbefore tableinsertrowafter tabledeleterow | " +
-                          "tableinsertcolbefore tableinsertcolafter tabledeletecol | " +
-                          "link image media | signature | code preview fullscreen",
+                          "bullist numlist outdent indent | removeformat | " +
+                          "table | link | code | help",
                         content_style:
-                          "body { font-family: -apple-system, BlinkMacSystemFont, San Francisco, Segoe UI, Roboto, Helvetica Neue, sans-serif; font-size: 14px; line-height: 1.4; direction: ltr; }",
+                          "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; line-height: 1.6; color: #333; } " +
+                          "p { margin: 0 0 1em 0; } " +
+                          "table { border-collapse: collapse; width: 100%; } " +
+                          "table td, table th { border: 1px solid #ddd; padding: 8px; } " +
+                          "table th { background-color: #f2f2f2; }",
                         language: "pt_BR",
                         branding: false,
-                        resize: false,
+                        resize: true,
                         statusbar: true,
-                        elementpath: false,
-                        // Prevent content loss on errors
+                        elementpath: true,
+                        browser_spellcheck: true,
+                        contextmenu: "link table",
+                        table_default_attributes: {
+                          border: "1",
+                        },
+                        table_default_styles: {
+                          "border-collapse": "collapse",
+                          width: "100%",
+                        },
+                        // Configurações para evitar travamentos
+                        inline_boundaries: false,
+                        object_resizing: true,
+                        paste_data_images: false,
+                        paste_as_text: false,
+                        paste_auto_cleanup_on_paste: true,
+                        paste_remove_styles: false,
+                        paste_remove_styles_if_webkit: false,
+                        paste_strip_class_attributes: "none",
+                        // Configurações de popup otimizadas
+                        popup_css_add: "",
+                        popup_css: "",
+                        // Desabilitar auto-save para evitar conflitos
                         auto_save: {
-                          enabled: false, // Disable auto-save to prevent conflicts
+                          enabled: false,
+                        },
+                        // Configurações de inicialização
+                        init_instance_callback: (editor) => {
+                          console.log(
+                            "TinyMCE instance initialized:",
+                            editor.id,
+                          );
                         },
                         setup: (editor) => {
-                          // Set initial content after editor is ready
+                          // Configurar eventos de forma mais estável
+                          let contentChangeTimeout;
+
                           editor.on("init", () => {
+                            console.log("TinyMCE editor setup complete");
                             if (editedContent) {
                               editor.setContent(editedContent);
                             }
                           });
 
-                          // Track content changes more reliably
-                          editor.on("change keyup paste input", () => {
-                            const content = editor.getContent();
-                            setEditedContent(content);
-                            console.log(
-                              "Editor content updated, length:",
-                              content.length,
-                            );
+                          // Debounce para mudanças de conteúdo
+                          editor.on("input change paste keyup", () => {
+                            clearTimeout(contentChangeTimeout);
+                            contentChangeTimeout = setTimeout(() => {
+                              const content = editor.getContent();
+                              setEditedContent(content);
+                              console.log(
+                                "Editor content updated, length:",
+                                content.length,
+                              );
+                            }, 300);
                           });
 
-                          // Add custom signature button
-                          editor.ui.registry.addButton("signature", {
-                            text: "Assinatura",
-                            tooltip: "Inserir campo de assinatura",
-                            onAction: () => {
-                              const signerName = prompt("Nome do signatário:");
-                              if (!signerName) return;
-
-                              const signerCPF = prompt("CPF do signatário:");
-                              if (!signerCPF) return;
-
-                              const signatureId = "signature_" + Date.now();
-                              const signatureHtml = `
-                                <div class="signature-field" data-signature-id="${signatureId}" style="border: 2px dashed #ccc; padding: 20px; margin: 20px 0; background-color: #f9f9f9; text-align: center;">
-                                  <div style="margin-bottom: 10px;">
-                                    <strong>Campo de Assinatura</strong>
-                                  </div>
-                                  <div style="margin-bottom: 15px;">
-                                    <div style="border-bottom: 1px solid #000; width: 300px; height: 40px; margin: 0 auto; display: inline-block;"></div>
-                                  </div>
-                                  <div style="font-size: 12px; color: #666;">
-                                    <div><strong>Nome:</strong> ${signerName}</div>
-                                    <div><strong>CPF:</strong> ${signerCPF}</div>
-                                  </div>
-                                </div>
-                              `;
-
-                              editor.insertContent(signatureHtml);
-                            },
+                          // Prevenir travamentos em popups
+                          editor.on("BeforeOpenNotification", (e) => {
+                            console.log("Opening notification:", e);
                           });
 
-                          // Add context menu for editing signature fields
-                          editor.ui.registry.addContextMenu("signature", {
-                            update: (element) => {
-                              const signatureField =
-                                element.closest(".signature-field");
-                              if (signatureField) {
-                                return "editsignature";
-                              }
-                              return "";
-                            },
+                          editor.on("OpenWindow", (e) => {
+                            console.log("Opening window:", e);
                           });
 
-                          // Add edit signature menu item
-                          editor.ui.registry.addMenuItem("editsignature", {
-                            text: "Editar Assinatura",
-                            onAction: () => {
-                              const selectedElement =
-                                editor.selection.getNode();
-                              const signatureField =
-                                selectedElement.closest(".signature-field");
-
-                              if (signatureField) {
-                                const currentName = signatureField
-                                  .querySelector(
-                                    "div:last-child div:first-child",
-                                  )
-                                  .textContent.replace("Nome: ", "");
-                                const currentCPF = signatureField
-                                  .querySelector(
-                                    "div:last-child div:last-child",
-                                  )
-                                  .textContent.replace("CPF: ", "");
-
-                                const newName = prompt(
-                                  "Nome do signatário:",
-                                  currentName,
-                                );
-                                if (newName === null) return;
-
-                                const newCPF = prompt(
-                                  "CPF do signatário:",
-                                  currentCPF,
-                                );
-                                if (newCPF === null) return;
-
-                                signatureField.querySelector(
-                                  "div:last-child div:first-child",
-                                ).innerHTML =
-                                  `<strong>Nome:</strong> ${newName}`;
-                                signatureField.querySelector(
-                                  "div:last-child div:last-child",
-                                ).innerHTML = `<strong>CPF:</strong> ${newCPF}`;
-                              }
-                            },
+                          // Limpar timeouts quando o editor for destruído
+                          editor.on("remove", () => {
+                            clearTimeout(contentChangeTimeout);
                           });
                         },
                       }}
-                      onEditorChange={(content) => {
+                      onEditorChange={(content, editor) => {
+                        // Callback adicional para mudanças
                         setEditedContent(content);
-                        console.log(
-                          "Editor change event, content length:",
-                          content.length,
-                        );
                       }}
                     />
                     <div className="flex gap-2">
@@ -1839,7 +2597,10 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                   <div
                     className="prose max-w-none p-4 border rounded-md bg-white"
                     dangerouslySetInnerHTML={{
-                      __html: contract.contract_content,
+                      __html: renderContractContentWithSignatures(
+                        contract.contract_content,
+                        signatureLinks,
+                      ),
                     }}
                     style={
                       {
@@ -1862,7 +2623,7 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                     <p className="text-muted-foreground mb-4">
                       O conteúdo do contrato não foi definido.
                     </p>
-                    {(isAdmin || canEditOrDelete) && (
+                    {(isAdmin || canEditOrDelete || isEditMode) && (
                       <Button onClick={handleEditContent} variant="outline">
                         <Edit3 className="mr-2 h-4 w-4" />
                         Adicionar Conteúdo
@@ -1882,25 +2643,154 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                   Documentos do Contrato
                 </CardTitle>
                 <CardDescription>
-                  Documentos anexados e relacionados ao contrato.
+                  Documentos anexados e relacionados ao contrato, incluindo
+                  assinaturas e documentos de identificação.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8">
-                  <Upload className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-lg font-medium mb-2">
-                    Nenhum documento anexado
-                  </p>
-                  <p className="text-muted-foreground mb-4">
-                    Os documentos relacionados ao contrato aparecerão aqui.
-                  </p>
-                  {isAdmin && (
-                    <Button variant="outline">
-                      <Upload className="mr-2 h-4 w-4" />
-                      Anexar Documento
-                    </Button>
-                  )}
-                </div>
+                {isLoadingDocuments ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">
+                      Carregando documentos...
+                    </p>
+                  </div>
+                ) : contractDocuments.length > 0 ? (
+                  <div className="space-y-4">
+                    {contractDocuments.map((document) => (
+                      <div
+                        key={document.id}
+                        className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                {document.type === "Assinatura Digital" ? (
+                                  <PenTool className="h-5 w-5 text-blue-600" />
+                                ) : (
+                                  <FileText className="h-5 w-5 text-blue-600" />
+                                )}
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-gray-900">
+                                  {document.name}
+                                </h4>
+                                <p className="text-sm text-gray-600">
+                                  {document.type}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2 md:grid-cols-2 text-sm text-gray-600 ml-13">
+                              <div>
+                                <strong>📤 Anexado por:</strong>{" "}
+                                {document.uploadedBy}
+                              </div>
+                              <div>
+                                <strong>📅 Data:</strong>{" "}
+                                {new Date(document.uploadedAt).toLocaleString(
+                                  "pt-BR",
+                                )}
+                              </div>
+                              {document.additionalInfo.cpf && (
+                                <div>
+                                  <strong>🆔 CPF:</strong>{" "}
+                                  {document.additionalInfo.cpf}
+                                </div>
+                              )}
+                              {document.additionalInfo.ip && (
+                                <div>
+                                  <strong>🌐 IP:</strong>{" "}
+                                  {document.additionalInfo.ip}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                window.open(document.url, "_blank")
+                              }
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              Visualizar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const link = document.createElement("a");
+                                link.href = document.url;
+                                link.download = document.name;
+                                link.click();
+                              }}
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            {isAdmin && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteDocument(
+                                    document.id,
+                                    document.type,
+                                  )
+                                }
+                                disabled={isDeletingDocument === document.id}
+                              >
+                                {isDeletingDocument === document.id ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Preview for signature images */}
+                        {document.type === "Assinatura Digital" && (
+                          <div className="mt-4 ml-13">
+                            <div className="border-2 border-green-200 rounded-lg p-3 bg-green-50 inline-block">
+                              <img
+                                src={document.url}
+                                alt={`Assinatura de ${document.uploadedBy}`}
+                                className="max-w-[200px] max-h-[80px] object-contain"
+                                onError={(e) => {
+                                  console.error(
+                                    "Error loading signature image:",
+                                    e,
+                                  );
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            </div>
+                            <p className="text-xs text-green-600 mt-1">
+                              Assinatura Digital Verificada
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Upload className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-lg font-medium mb-2">
+                      Nenhum documento anexado
+                    </p>
+                    <p className="text-muted-foreground mb-4">
+                      Os documentos relacionados ao contrato aparecerão aqui
+                      quando forem anexados durante o processo de assinatura.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

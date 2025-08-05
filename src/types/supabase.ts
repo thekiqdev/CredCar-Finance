@@ -359,6 +359,56 @@ export type Database = {
           },
         ]
       }
+      electronic_signature_fields: {
+        Row: {
+          client_ip: string | null
+          contract_id: number | null
+          created_at: string | null
+          id: number
+          signature_id: string
+          signature_url: string | null
+          signed_at: string | null
+          signer_cpf: string
+          signer_name: string
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          client_ip?: string | null
+          contract_id?: number | null
+          created_at?: string | null
+          id?: number
+          signature_id: string
+          signature_url?: string | null
+          signed_at?: string | null
+          signer_cpf: string
+          signer_name: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          client_ip?: string | null
+          contract_id?: number | null
+          created_at?: string | null
+          id?: number
+          signature_id?: string
+          signature_url?: string | null
+          signed_at?: string | null
+          signer_cpf?: string
+          signer_name?: string
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "electronic_signature_fields_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       groups: {
         Row: {
           available_quotas: number

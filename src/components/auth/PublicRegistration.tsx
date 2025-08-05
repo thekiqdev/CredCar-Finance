@@ -122,6 +122,15 @@ const PublicRegistration = () => {
     setIsLoading(true);
 
     try {
+      console.log("Submitting public registration with data:", {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        cnpj: formData.cnpj,
+        razao_social: formData.razao_social,
+        ponto_venda: formData.ponto_venda,
+      });
+
       // Create public registration in database
       const newUser = await representativeService.createPublicRegistration({
         name: formData.name,
@@ -133,7 +142,7 @@ const PublicRegistration = () => {
         password: formData.password,
       });
 
-      console.log("Registration submitted successfully:", formData.name);
+      console.log("Registration submitted successfully:", newUser);
 
       // Set the user in localStorage so DocumentUpload can access it
       authService.setCurrentUser(newUser);

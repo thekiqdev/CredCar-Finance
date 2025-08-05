@@ -1529,6 +1529,969 @@ export const authService = {
   },
 };
 
+// Electronic signature service
+export const electronicSignatureService = {
+  // Extract signature fields from contract content (supports both shortcodes and HTML)
+  async extractSignatureFields(contractId: string, contractContent: string) {
+    try {
+      const signatureFields = [];
+
+      // First, extract from shortcodes
+      const shortcodePattern =
+        /\[SIGNATURE id="([^"]+)" name="([^"]+)" cpf="([^"]+)"\]/g;
+      let match;
+      while ((match = shortcodePattern.exec(contractContent)) !== null) {
+        const [, signatureId, signerName, signerCPF] = match;
+        if (signatureId && signerName && signerCPF) {
+          signatureFields.push({
+            signature_id: signatureId,
+            signer_name: signerName,
+            signer_cpf: signerCPF.replace(/\D/g, ""), // Remove formatting
+            contract_id: contractId === "temp" ? null : parseInt(contractId),
+            status: "pending",
+          });
+        }
+      }
+
+      // Then, extract from HTML divs (for backward compatibility)
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(contractContent, "text/html");
+      const signatureDivs = doc.querySelectorAll(
+        ".signature-field-placeholder",
+      );
+
+      for (const div of signatureDivs) {
+        const signatureId = div.getAttribute("data-signature-id");
+        const signerName = div.getAttribute("data-signer-name");
+        const signerCPF = div.getAttribute("data-signer-cpf");
+
+        if (signatureId && signerName && signerCPF) {
+          // Check if this signature ID is already added from shortcode
+          const existingField = signatureFields.find(
+            (f) => f.signature_id === signatureId,
+          );
+          if (!existingField) {
+            signatureFields.push({
+              signature_id: signatureId,
+              signer_name: signerName,
+              signer_cpf: signerCPF.replace(/\D/g, ""), // Remove formatting
+              contract_id: contractId === "temp" ? null : parseInt(contractId),
+              status: "pending",
+            });
+          }
+        }
+      }
+
+      return signatureFields;
+    } catch (error) {
+      console.error("Error extracting signature fields:", error);
+      throw error;
+    }
+  },
+
+  // Save signature fields to database
+  async saveSignatureFields(signatureFields: any[]) {
+    try {
+      if (signatureFields.length === 0) return [];
+
+      // Filter out fields with null contract_id (temp fields)
+      const validFields = signatureFields.filter((f) => f.contract_id !== null);
+      if (validFields.length === 0) return [];
+
+      // First, check if any fields already exist and remove duplicates
+      const existingFields = await supabase
+        .from("electronic_signature_fields")
+        .select("signature_id")
+        .in(
+          "signature_id",
+          validFields.map((f) => f.signature_id),
+        );
+
+      const existingIds = existingFields.data?.map((f) => f.signature_id) || [];
+      const newFields = validFields.filter(
+        (f) => !existingIds.includes(f.signature_id),
+      );
+
+      if (newFields.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from("electronic_signature_fields")
+        .insert(newFields)
+        .select();
+
+      if (error) {
+        console.error("Error saving signature fields:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in saveSignatureFields:", error);
+      throw error;
+    }
+  },
+
+  // Get signature field by signature ID
+  async getSignatureField(signatureId: string) {
+    try {
+      const { data, error } = await supabase
+        .from("electronic_signature_fields")
+        .select(
+          `
+          *,
+          contracts!inner (
+            id,
+            contract_code,
+            contract_content,
+            status,
+            clients!inner (
+              full_name,
+              email
+            )
+          )
+        `,
+        )
+        .eq("signature_id", signatureId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching signature field:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in getSignatureField:", error);
+      throw error;
+    }
+  },
+
+  // Update signature field with signature data
+  async updateSignatureField(
+    signatureId: string,
+    signatureUrl: string,
+    clientIp?: string,
+  ) {
+    try {
+      const { data, error } = await supabase
+        .from("electronic_signature_fields")
+        .update({
+          signature_url: signatureUrl,
+          signed_at: new Date().toISOString(),
+          client_ip: clientIp,
+          status: "signed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("signature_id", signatureId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating signature field:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in updateSignatureField:", error);
+      throw error;
+    }
+  },
+
+  // Get all signature fields for a contract
+  async getContractSignatureFields(contractId: string) {
+    try {
+      const { data, error } = await supabase
+        .from("electronic_signature_fields")
+        .select("*")
+        .eq("contract_id", contractId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching contract signature fields:", error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error in getContractSignatureFields:", error);
+      throw error;
+    }
+  },
+
+  // Generate signature links for all fields in a contract
+  async generateSignatureLinks(contractId: string) {
+    try {
+      const fields = await this.getContractSignatureFields(contractId);
+      const baseUrl = window.location.origin;
+
+      return fields.map((field) => ({
+        signatureId: field.signature_id,
+        signerName: field.signer_name,
+        signerCPF: field.signer_cpf,
+        signatureUrl: `${baseUrl}/sign/${contractId}/${field.signature_id}`,
+        status: field.status,
+        signatureImageUrl: field.signature_url,
+        signedAt: field.signed_at,
+        clientIp: field.client_ip,
+      }));
+    } catch (error) {
+      console.error("Error generating signature links:", error);
+      throw error;
+    }
+  },
+
+  // Remove signature completely (delete from database, storage, and contract content)
+  async removeSignature(signatureId: string) {
+    try {
+      console.log(
+        `🗑️ Starting complete signature removal process for: ${signatureId}`,
+      );
+
+      // First, get the current signature field data
+      const signatureField = await this.getSignatureField(signatureId);
+
+      if (!signatureField) {
+        throw new Error("Campo de assinatura não encontrado");
+      }
+
+      console.log(`📋 Found signature field:`, {
+        signatureId,
+        signerName: signatureField.signer_name,
+        status: signatureField.status,
+        hasSignatureUrl: !!signatureField.signature_url,
+        contractId: signatureField.contracts?.id,
+      });
+
+      // Step 1: Delete signature file from storage if it exists
+      if (signatureField.signature_url) {
+        try {
+          console.log(
+            `🗂️ Deleting signature file from storage: ${signatureField.signature_url}`,
+          );
+
+          // Extract the file path from the URL
+          const url = new URL(signatureField.signature_url);
+          const pathParts = url.pathname.split("/");
+
+          // Find the path after the bucket name
+          const bucketIndex = pathParts.findIndex(
+            (part) => part === "signatures",
+          );
+
+          if (bucketIndex !== -1 && bucketIndex < pathParts.length - 1) {
+            const filePath = pathParts.slice(bucketIndex + 1).join("/");
+            console.log(`📁 Extracted file path: ${filePath}`);
+
+            // Delete the signature file from storage
+            const { storageService, STORAGE_BUCKETS } = await import(
+              "./storage"
+            );
+            await storageService.deleteFile(
+              STORAGE_BUCKETS.SIGNATURES,
+              filePath,
+            );
+            console.log(`✅ Signature file deleted from storage: ${filePath}`);
+          } else {
+            console.warn(
+              `⚠️ Could not extract file path from URL: ${signatureField.signature_url}`,
+            );
+          }
+        } catch (storageError) {
+          console.error(
+            "❌ Error deleting signature file from storage:",
+            storageError,
+          );
+          // Continue with database update even if file deletion fails
+          console.log(
+            "⏭️ Continuing with database cleanup despite storage error...",
+          );
+        }
+      } else {
+        console.log(`ℹ️ No signature file to delete from storage`);
+      }
+
+      // Step 2: Completely delete the signature field from database (instead of just resetting)
+      console.log(`🗑️ Completely removing signature field from database...`);
+      const { error: deleteError } = await supabase
+        .from("electronic_signature_fields")
+        .delete()
+        .eq("signature_id", signatureId);
+
+      if (deleteError) {
+        console.error(
+          "❌ Error deleting signature field from database:",
+          deleteError,
+        );
+        throw new Error(
+          `Erro ao excluir campo de assinatura do banco de dados: ${deleteError.message}`,
+        );
+      }
+
+      console.log(`✅ Signature field completely deleted from database`);
+
+      // Step 3: Update the contract content to remove the signature
+      if (signatureField.contracts?.id) {
+        console.log(`📝 Updating contract content to remove signature...`);
+        await this.removeSignatureFromContractContent(
+          signatureField.contracts.id.toString(),
+          signatureId,
+          signatureField.signer_name,
+          signatureField.signer_cpf,
+        );
+        console.log(`✅ Contract content updated`);
+      } else {
+        console.warn(`⚠️ No contract ID found for signature field`);
+      }
+
+      console.log(
+        `🎉 Signature removal process completed successfully for: ${signatureId}`,
+      );
+      console.log(`📊 Summary of actions completed:`);
+      console.log(`   • ✅ Signature file deleted from storage`);
+      console.log(`   • ✅ Database record completely deleted`);
+      console.log(`   • ✅ Contract content updated`);
+
+      return { success: true, signatureId };
+    } catch (error) {
+      console.error(`💥 Error in removeSignature for ${signatureId}:`, error);
+      throw new Error(
+        `Erro ao remover assinatura completamente: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  },
+
+  // Remove signature from contract content and restore original placeholder
+  async removeSignatureFromContractContent(
+    contractId: string,
+    signatureId: string,
+    signerName: string,
+    signerCPF: string,
+  ) {
+    try {
+      console.log(
+        `📝 Removing signature from contract content: ${contractId}, signature: ${signatureId}`,
+      );
+
+      // Get current contract content
+      const { data: contractData, error: fetchError } = await supabase
+        .from("contracts")
+        .select("contract_content")
+        .eq("id", contractId)
+        .single();
+
+      if (fetchError) {
+        console.error("❌ Error fetching contract content:", fetchError);
+        throw new Error(
+          `Erro ao buscar conteúdo do contrato: ${fetchError.message}`,
+        );
+      }
+
+      let updatedContent = contractData.contract_content || "";
+      console.log(`📄 Current content length: ${updatedContent.length}`);
+
+      // Remove the signature field completely from the contract content
+      // Try multiple patterns to catch different signature field formats
+      const patterns = [
+        // Pattern for shortcode format
+        new RegExp(
+          `\\[SIGNATURE id="${signatureId}" name="[^"]*" cpf="[^"]*"\\]`,
+          "g",
+        ),
+        // Pattern for completed signature fields
+        new RegExp(
+          `<div class="signature-field-completed"[^>]*data-signature-id="${signatureId}"[^>]*>[\\s\\S]*?</div>`,
+          "g",
+        ),
+        // Pattern for any signature field with this ID
+        new RegExp(
+          `<div[^>]*class="[^"]*signature-field[^"]*"[^>]*data-signature-id="${signatureId}"[^>]*>[\\s\\S]*?</div>`,
+          "g",
+        ),
+        // Pattern for signature-field-placeholder
+        new RegExp(
+          `<div class="signature-field-placeholder"[^>]*data-signature-id="${signatureId}"[^>]*>[\\s\\S]*?</div>`,
+          "g",
+        ),
+        // Broader pattern as fallback
+        new RegExp(
+          `<div[^>]*data-signature-id="${signatureId}"[^>]*>[\\s\\S]*?</div>`,
+          "g",
+        ),
+      ];
+
+      let replaced = false;
+      const originalContent = updatedContent;
+
+      // Try each pattern until one works - completely remove the signature field
+      for (let i = 0; i < patterns.length; i++) {
+        const pattern = patterns[i];
+        const testContent = updatedContent.replace(pattern, ""); // Remove completely
+        if (testContent !== updatedContent) {
+          updatedContent = testContent;
+          replaced = true;
+          console.log(
+            `✅ Signature field completely removed using pattern ${i + 1}: ${pattern.source.substring(0, 50)}...`,
+          );
+          break;
+        }
+      }
+
+      if (!replaced) {
+        console.warn(
+          `⚠️ No signature field found with ID: ${signatureId}. Searching in content...`,
+        );
+        // Log a sample of the content to help debug
+        const contentSample = updatedContent.substring(0, 1000);
+        console.log(`Content sample:`, contentSample);
+
+        // Try to find any mention of the signature ID
+        if (updatedContent.includes(signatureId)) {
+          console.log(
+            `✅ Signature ID found in content, but pattern didn't match`,
+          );
+          // Try a simple string replacement as last resort
+          const simplePattern = new RegExp(signatureId, "g");
+          const beforeLength = updatedContent.length;
+          updatedContent = updatedContent.replace(simplePattern, "");
+          const afterLength = updatedContent.length;
+          if (beforeLength !== afterLength) {
+            console.log(
+              `✅ Signature ID removed using simple string replacement`,
+            );
+            replaced = true;
+          }
+        } else {
+          console.log(`❌ Signature ID not found in content at all`);
+        }
+
+        // Don't throw error, just log warning - the signature was still removed from database
+        console.log(`⏭️ Continuing without content update...`);
+      } else {
+        console.log(
+          `✅ Signature field completely removed for ID: ${signatureId}`,
+        );
+      }
+
+      // Update the contract content in the database
+      console.log(`💾 Updating contract content in database...`);
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({
+          contract_content: updatedContent,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", contractId);
+
+      if (updateError) {
+        console.error("❌ Error updating contract content:", updateError);
+        throw new Error(
+          `Erro ao atualizar conteúdo do contrato: ${updateError.message}`,
+        );
+      }
+
+      console.log(
+        "✅ Contract content updated successfully - signature removed and field restored to pending state",
+      );
+    } catch (error) {
+      console.error("❌ Error in removeSignatureFromContractContent:", error);
+      throw new Error(
+        `Erro ao remover assinatura do conteúdo do contrato: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  },
+};
+
+// Client service
+export const clientService = {
+  // Get all clients for a representative
+  async getByRepresentative(representativeId: string) {
+    try {
+      // First, get clients directly associated with the representative
+      const { data: directClients, error: directError } = await supabase
+        .from("clients")
+        .select("*")
+        .eq("representative_id", representativeId)
+        .order("created_at", { ascending: false });
+
+      if (directError) {
+        console.error("Error fetching direct clients:", directError);
+      }
+
+      // Also get clients from contracts created by this representative
+      const { data: contractClients, error: contractError } = await supabase
+        .from("contracts")
+        .select(
+          `
+          clients!inner (
+            id,
+            full_name,
+            name,
+            email,
+            phone,
+            cpf_cnpj,
+            address_street,
+            address_number,
+            address_complement,
+            address_neighborhood,
+            address_city,
+            address_state,
+            address_zip,
+            created_at,
+            updated_at
+          )
+        `,
+        )
+        .eq("representative_id", representativeId);
+
+      if (contractError) {
+        console.error("Error fetching contract clients:", contractError);
+      }
+
+      // Combine and deduplicate clients
+      const allClients = [];
+      const clientIds = new Set();
+
+      // Add direct clients
+      if (directClients) {
+        directClients.forEach((client) => {
+          if (!clientIds.has(client.id)) {
+            allClients.push(client);
+            clientIds.add(client.id);
+          }
+        });
+      }
+
+      // Add clients from contracts
+      if (contractClients) {
+        contractClients.forEach((contract) => {
+          const client = contract.clients;
+          if (client && !clientIds.has(client.id)) {
+            allClients.push(client);
+            clientIds.add(client.id);
+          }
+        });
+      }
+
+      return allClients;
+    } catch (error) {
+      console.error("Error in clientService.getByRepresentative:", error);
+      return [];
+    }
+  },
+
+  // Get all clients with representative information (for admin)
+  async getAllWithRepresentative() {
+    try {
+      console.log("Fetching all clients with representative information...");
+
+      // First, get all clients from the clients table
+      const { data: clientsData, error: clientsError } = await supabase
+        .from("clients")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (clientsError) {
+        console.error("Error fetching clients:", clientsError);
+      }
+
+      // Also get clients from contracts (since many clients are created through contracts)
+      const { data: contractsData, error: contractsError } = await supabase
+        .from("contracts")
+        .select(
+          `
+          clients!inner (
+            id,
+            full_name,
+            name,
+            email,
+            phone,
+            cpf_cnpj,
+            address_street,
+            address_number,
+            address_complement,
+            address_neighborhood,
+            address_city,
+            address_state,
+            address_zip,
+            created_at,
+            updated_at
+          ),
+          representative_id
+        `,
+        )
+        .order("created_at", { ascending: false });
+
+      if (contractsError) {
+        console.error("Error fetching contracts with clients:", contractsError);
+      }
+
+      // Get all representatives
+      const { data: representativesData, error: repsError } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, commission_code")
+        .eq("role", "Representante");
+
+      if (repsError) {
+        console.error("Error fetching representatives:", repsError);
+      }
+
+      // Create a map of representatives by ID for quick lookup
+      const repsMap = new Map();
+      (representativesData || []).forEach((rep) => {
+        repsMap.set(rep.id, rep);
+      });
+
+      // Combine all clients and deduplicate
+      const allClientsMap = new Map();
+
+      // Add clients from the clients table
+      (clientsData || []).forEach((client) => {
+        const representative = client.representative_id
+          ? repsMap.get(client.representative_id)
+          : null;
+
+        allClientsMap.set(client.id, {
+          ...client,
+          profiles: representative || null,
+        });
+      });
+
+      // Add clients from contracts (these will have representative info from the contract)
+      (contractsData || []).forEach((contract) => {
+        const client = contract.clients;
+        if (client) {
+          const representative = contract.representative_id
+            ? repsMap.get(contract.representative_id)
+            : null;
+
+          // If client already exists, update with representative info if not already set
+          const existingClient = allClientsMap.get(client.id);
+          if (existingClient) {
+            // Update representative info if current client doesn't have one but contract does
+            if (!existingClient.profiles && representative) {
+              existingClient.profiles = representative;
+            }
+          } else {
+            // Add new client with representative info
+            allClientsMap.set(client.id, {
+              ...client,
+              profiles: representative || null,
+            });
+          }
+        }
+      });
+
+      // Convert map to array
+      const clientsWithReps = Array.from(allClientsMap.values());
+
+      console.log(
+        "Successfully combined clients with representatives:",
+        clientsWithReps.length,
+        "clients",
+      );
+
+      // Log some examples for debugging
+      clientsWithReps.slice(0, 3).forEach((client) => {
+        console.log(
+          `Client ${client.full_name || client.name}: representative=${client.profiles?.full_name || "none"}`,
+        );
+      });
+
+      return clientsWithReps;
+    } catch (error) {
+      console.error("Error in clientService.getAllWithRepresentative:", error);
+
+      // Final fallback - try to get basic client data
+      try {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("clients")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (fallbackError) {
+          console.error("Fallback query also failed:", fallbackError);
+          return [];
+        }
+
+        console.log("Using fallback client data:", fallbackData);
+        return (fallbackData || []).map((client) => ({
+          ...client,
+          profiles: null,
+        }));
+      } catch (fallbackError) {
+        console.error("Fallback query failed:", fallbackError);
+        return [];
+      }
+    }
+  },
+
+  // Get client by ID
+  async getById(clientId: number) {
+    try {
+      const { data, error } = await supabase
+        .from("clients")
+        .select(
+          `
+          *,
+          profiles!representative_id (
+            id,
+            full_name,
+            email,
+            commission_code
+          )
+        `,
+        )
+        .eq("id", clientId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching client by ID:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in clientService.getById:", error);
+      throw error;
+    }
+  },
+
+  // Create new client
+  async create(clientData: {
+    full_name: string;
+    name?: string;
+    email: string;
+    phone?: string;
+    cpf_cnpj?: string;
+    address_street?: string;
+    address_number?: string;
+    address_complement?: string;
+    address_neighborhood?: string;
+    address_city?: string;
+    address_state?: string;
+    address_zip?: string;
+    representative_id: string;
+  }) {
+    try {
+      const insertData = {
+        ...clientData,
+        name: clientData.name || clientData.full_name,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("clients")
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating client:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in clientService.create:", error);
+      throw error;
+    }
+  },
+
+  // Update client
+  async update(
+    clientId: number,
+    updates: Partial<{
+      full_name: string;
+      name: string;
+      email: string;
+      phone: string;
+      cpf_cnpj: string;
+      address_street: string;
+      address_number: string;
+      address_complement: string;
+      address_neighborhood: string;
+      address_city: string;
+      address_state: string;
+      address_zip: string;
+      representative_id: string;
+    }>,
+  ) {
+    try {
+      const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("clients")
+        .update(updateData)
+        .eq("id", clientId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating client:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in clientService.update:", error);
+      throw error;
+    }
+  },
+
+  // Delete client
+  async delete(clientId: number) {
+    try {
+      const { error } = await supabase
+        .from("clients")
+        .delete()
+        .eq("id", clientId);
+
+      if (error) {
+        console.error("Error deleting client:", error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in clientService.delete:", error);
+      throw error;
+    }
+  },
+
+  // Get client statistics for a representative
+  async getRepresentativeClientStats(representativeId: string) {
+    try {
+      // Get all clients for this representative (using the same logic as getByRepresentative)
+      const clients = await this.getByRepresentative(representativeId);
+
+      const totalClients = clients?.length || 0;
+      const thisMonth = new Date();
+      thisMonth.setDate(1);
+      thisMonth.setHours(0, 0, 0, 0);
+
+      const newClientsThisMonth =
+        clients?.filter(
+          (client) => new Date(client.created_at || "") >= thisMonth,
+        ).length || 0;
+
+      return {
+        totalClients,
+        newClientsThisMonth,
+      };
+    } catch (error) {
+      console.error(
+        "Error in clientService.getRepresentativeClientStats:",
+        error,
+      );
+      return {
+        totalClients: 0,
+        newClientsThisMonth: 0,
+      };
+    }
+  },
+};
+
+// General settings service
+export const generalSettingsService = {
+  // Get general settings
+  async getSettings() {
+    try {
+      const { data, error } = await supabase
+        .from("general_settings")
+        .select("*")
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Error fetching general settings:", error);
+        throw error;
+      }
+
+      // Return default settings if none exist
+      if (!data) {
+        return {
+          system_name: "CredCar",
+          company_name: "CredCar Soluções Financeiras",
+          company_address: "Rua das Empresas, 123 - Centro - São Paulo/SP",
+          company_phone: "(11) 3000-0000",
+          company_email: "contato@credcar.com.br",
+          company_cnpj: "12.345.678/0001-90",
+          logo_url: "",
+        };
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in generalSettingsService.getSettings:", error);
+      throw error;
+    }
+  },
+
+  // Update general settings
+  async updateSettings(settings: {
+    system_name?: string;
+    company_name?: string;
+    company_address?: string;
+    company_phone?: string;
+    company_email?: string;
+    company_cnpj?: string;
+    logo_url?: string;
+  }) {
+    try {
+      // First try to update existing settings
+      const { data: existingData } = await supabase
+        .from("general_settings")
+        .select("id")
+        .single();
+
+      if (existingData) {
+        // Update existing record
+        const { data, error } = await supabase
+          .from("general_settings")
+          .update({
+            ...settings,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingData.id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error("Error updating general settings:", error);
+          throw error;
+        }
+
+        return data;
+      } else {
+        // Create new record
+        const { data, error } = await supabase
+          .from("general_settings")
+          .insert({
+            ...settings,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error("Error creating general settings:", error);
+          throw error;
+        }
+
+        return data;
+      }
+    } catch (error) {
+      console.error("Error in generalSettingsService.updateSettings:", error);
+      throw error;
+    }
+  },
+};
+
 // Signature service
 export const signatureService = {
   // Get contract for public signature

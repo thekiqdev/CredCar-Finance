@@ -36,6 +36,7 @@ import {
   Download,
   Filter,
   Edit,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -48,13 +49,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { dashboardService, authService } from "@/lib/supabase";
+import {
+  dashboardService,
+  authService,
+  contractService,
+  clientService,
+} from "@/lib/supabase";
 import ContractCreationFlow from "@/components/sales/ContractCreationFlow";
 import ContractDetails from "@/components/sales/ContractDetails";
 
 interface RepresentativeDashboardProps {
   representativeName?: string;
-  onLogout?: () => void;
   performanceData?: {
     totalSales: number;
     targetSales: number;
@@ -85,7 +90,6 @@ interface RepresentativeDashboardProps {
 
 const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
   representativeName,
-  onLogout = () => {},
   performanceData: propPerformanceData,
   myContracts: propMyContracts,
   commissionHistory: propCommissionHistory,
@@ -107,6 +111,11 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
   const [commissionHistory, setCommissionHistory] = useState(
     propCommissionHistory || [],
   );
+  const [myClients, setMyClients] = useState([]);
+  const [clientStats, setClientStats] = useState({
+    totalClients: 0,
+    newClientsThisMonth: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isWithdrawalDialogOpen, setIsWithdrawalDialogOpen] =
@@ -157,6 +166,30 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
           setMyContracts(dashboardData.myContracts || []);
           setCommissionHistory(dashboardData.commissionHistory || []);
         }
+
+        // Load clients data
+        try {
+          const clients = await clientService.getByRepresentative(
+            currentUser.id,
+          );
+          console.log("Clients loaded for representative:", clients);
+          setMyClients(clients || []);
+        } catch (clientError) {
+          console.error("Error loading clients:", clientError);
+          setMyClients([]);
+        }
+
+        // Load client statistics
+        try {
+          const stats = await clientService.getRepresentativeClientStats(
+            currentUser.id,
+          );
+          console.log("Client stats loaded:", stats);
+          setClientStats(stats || { totalClients: 0, newClientsThisMonth: 0 });
+        } catch (statsError) {
+          console.error("Error loading client stats:", statsError);
+          setClientStats({ totalClients: 0, newClientsThisMonth: 0 });
+        }
       } catch (err) {
         console.error("Error loading dashboard data:", err);
         const errorMessage =
@@ -175,6 +208,11 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
         });
         setMyContracts([]);
         setCommissionHistory([]);
+        setMyClients([]);
+        setClientStats({
+          totalClients: 0,
+          newClientsThisMonth: 0,
+        });
       } finally {
         setIsLoading(false);
       }
@@ -189,7 +227,7 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
 
   const handleLogout = () => {
     authService.logout();
-    onLogout();
+    navigate("/");
   };
 
   const handleWithdrawalRequest = () => {
@@ -232,6 +270,69 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
     setSelectedContractId(null);
     // Refresh dashboard data when modal closes
     window.location.reload();
+  };
+
+  const handleDeleteContract = async (contractId: string) => {
+    const contract = myContracts.find((c) => c.id === contractId);
+    if (!contract) {
+      alert("Contrato não encontrado");
+      return;
+    }
+
+    // Check if user can delete this contract
+    const canDelete =
+      contract.status === "pending" ||
+      contract.status === "pendente" ||
+      contract.status === "cancelled" ||
+      contract.status === "cancelado" ||
+      contract.status === "Reprovado";
+
+    if (!canDelete) {
+      alert(
+        "Você só pode excluir contratos com status Pendente, Cancelado ou Reprovado.",
+      );
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja excluir o contrato ${contract.contractNumber}?\n\nEsta ação irá:\n• Excluir o contrato permanentemente\n• Remover todos os documentos associados\n• Remover todas as assinaturas\n\nEsta ação não pode ser desfeita.`,
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      if (!currentUser) {
+        alert("Usuário não autenticado");
+        return;
+      }
+
+      await contractService.delete(contractId, currentUser.id, false); // false for isAdmin (representative)
+
+      // Refresh dashboard data
+      const dashboardData =
+        await dashboardService.getRepresentativeDashboardData(currentUser.id);
+      if (dashboardData) {
+        setMyContracts(dashboardData.myContracts || []);
+        setPerformanceData(
+          dashboardData.performanceData || {
+            totalSales: 0,
+            targetSales: 500000,
+            activeContracts: 0,
+            completedContracts: 0,
+            pendingCommission: 0,
+            nextCommissionDate: "15/08/2025",
+            nextCommissionValue: 0,
+          },
+        );
+      }
+
+      alert("Contrato excluído com sucesso!");
+    } catch (error) {
+      console.error("Error deleting contract:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao excluir contrato: ${errorMessage}`);
+    }
   };
 
   // Contract creation flow is now integrated within the dashboard
@@ -315,6 +416,14 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
             >
               <DollarSign className="mr-2 h-4 w-4" />
               Área de Comissão
+            </Button>
+            <Button
+              variant={activeTab === "clients" ? "default" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => setActiveTab("clients")}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Meus Clientes
             </Button>
           </nav>
         </aside>
@@ -440,19 +549,16 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">
-                        Próxima Comissão
+                        Meus Clientes
                       </CardTitle>
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold text-orange-600">
-                        R${" "}
-                        {performanceData.nextCommissionValue.toLocaleString(
-                          "pt-BR",
-                        )}
+                      <div className="text-2xl font-bold text-blue-600">
+                        {clientStats.totalClients}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {performanceData.nextCommissionDate}
+                        +{clientStats.newClientsThisMonth} este mês
                       </p>
                     </CardContent>
                   </Card>
@@ -488,9 +594,10 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                     <Button
                       className="h-auto py-4 flex flex-col items-center justify-center gap-2"
                       variant="outline"
+                      onClick={() => setActiveTab("clients")}
                     >
                       <Users className="h-6 w-6" />
-                      <span>Cadastrar Cliente</span>
+                      <span>Meus Clientes</span>
                     </Button>
                   </div>
                 </div>
@@ -653,6 +760,22 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                                       }
                                     >
                                       <Edit className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  {(contract.status === "pending" ||
+                                    contract.status === "pendente" ||
+                                    contract.status === "cancelled" ||
+                                    contract.status === "cancelado" ||
+                                    contract.status === "Reprovado") && (
+                                    <Button
+                                      variant="destructive"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleDeleteContract(contract.id)
+                                      }
+                                      title="Excluir contrato"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
                                     </Button>
                                   )}
                                 </div>
@@ -914,6 +1037,154 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                         Exportar Extrato
                       </Button>
                     </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+          {!showContractFlow &&
+            !isLoading &&
+            !error &&
+            activeTab === "clients" && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">Meus Clientes</h2>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">
+                      <Filter className="mr-2 h-4 w-4" />
+                      Filtrar
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <Download className="mr-2 h-4 w-4" />
+                      Exportar
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Client Statistics Cards */}
+                <div className="grid gap-4 md:grid-cols-3 mb-6">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        Total de Clientes
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {clientStats.totalClients}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Clientes cadastrados
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        Novos Este Mês
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">
+                        {clientStats.newClientsThisMonth}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Clientes novos
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        Com Contratos
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-orange-600">
+                        {myContracts.length}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Clientes ativos
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Lista de Clientes</CardTitle>
+                    <CardDescription>
+                      Todos os clientes cadastrados por você.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {myClients.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Telefone</TableHead>
+                            <TableHead>CPF/CNPJ</TableHead>
+                            <TableHead>Cidade</TableHead>
+                            <TableHead>Data Cadastro</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {myClients.map((client) => (
+                            <TableRow key={client.id}>
+                              <TableCell className="font-medium">
+                                {client.full_name || client.name}
+                              </TableCell>
+                              <TableCell>{client.email}</TableCell>
+                              <TableCell>{client.phone || "-"}</TableCell>
+                              <TableCell>{client.cpf_cnpj || "-"}</TableCell>
+                              <TableCell>
+                                {client.address_city || "-"}
+                              </TableCell>
+                              <TableCell>
+                                {client.created_at
+                                  ? new Date(
+                                      client.created_at,
+                                    ).toLocaleDateString("pt-BR")
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex gap-2 justify-end">
+                                  <Button variant="ghost" size="sm">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="outline" size="sm">
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-lg font-medium mb-2">
+                          Nenhum cliente encontrado
+                        </p>
+                        <p className="text-muted-foreground mb-4">
+                          Os clientes aparecerão aqui quando você criar
+                          contratos.
+                        </p>
+                        <Button
+                          variant="outline"
+                          onClick={handleStartSimulation}
+                        >
+                          <Calculator className="mr-2 h-4 w-4" />
+                          Criar Primeiro Contrato
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>

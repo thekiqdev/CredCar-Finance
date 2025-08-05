@@ -1,72 +1,117 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
 import { authService } from "../lib/supabase";
 import LoginForm from "./auth/LoginForm";
-import AdminDashboard from "./dashboard/AdminDashboard";
-import RepresentativeDashboard from "./dashboard/RepresentativeDashboard";
-
-type UserRole = "admin" | "representative" | null;
 
 const Home = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [userRole, setUserRole] = useState<UserRole>(null);
-  const [currentUser, setCurrentUser] = useState(null);
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
 
   // Check for existing session on component mount
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (user) {
-      setIsAuthenticated(true);
-      // Determine role based on user data
-      if (
-        user.role === "Administrador" ||
-        user.email === "admin@credicar.com"
-      ) {
-        setUserRole("admin");
-      } else {
-        setUserRole("representative");
+    const checkAuthStatus = async () => {
+      try {
+        const user = authService.getCurrentUser();
+        if (user) {
+          console.log(
+            "Existing user found:",
+            user.name,
+            "Role:",
+            user.role,
+            "Status:",
+            user.status,
+          );
+
+          // User is logged in, redirect to appropriate dashboard
+          if (
+            user.role === "Administrador" ||
+            user.email === "admin@credicar.com"
+          ) {
+            console.log("Redirecting admin to dashboard");
+            navigate("/admindashboard");
+            return;
+          }
+
+          // Handle representative users based on status
+          switch (user.status) {
+            case "Pendente de Aprovação":
+              console.log("Redirecting to status page - pending approval");
+              navigate("/status-cadastro");
+              break;
+
+            case "Documentos Pendentes":
+              console.log("Checking document approval status...");
+              // Check if documents are actually approved
+              const documentsApproved =
+                await authService.checkDocumentsApproved(user.id);
+              if (documentsApproved) {
+                console.log("Documents approved, redirecting to dashboard");
+                // Refresh user data to get updated status
+                const updatedUser = await authService.refreshUserData(user.id);
+                if (updatedUser && updatedUser.status === "Ativo") {
+                  navigate("/representante");
+                } else {
+                  navigate("/documentos");
+                }
+              } else {
+                console.log(
+                  "Documents still pending, redirecting to document upload",
+                );
+                navigate("/documentos");
+              }
+              break;
+
+            case "Ativo":
+              console.log("Active user, redirecting to dashboard");
+              navigate("/representante");
+              break;
+
+            case "Inativo":
+            case "Cancelado":
+              console.log("Inactive user, clearing session");
+              authService.logout();
+              break;
+
+            default:
+              console.log("Unknown status, redirecting to dashboard");
+              navigate("/representante");
+              break;
+          }
+        } else {
+          console.log("No existing user session found");
+        }
+      } catch (error) {
+        console.error("Error checking auth status:", error);
+        authService.logout();
+      } finally {
+        setIsLoading(false);
       }
-      setCurrentUser(user);
-    }
-  }, []);
+    };
 
-  const handleLogin = (role: UserRole) => {
-    setIsAuthenticated(true);
-    setUserRole(role);
+    checkAuthStatus();
+  }, [navigate]);
+
+  const handleLoginSuccess = (
+    email: string,
+    password: string,
+    userType: string,
+  ) => {
+    console.log("Login successful:", email, "Type:", userType);
+    // Navigation is handled by the LoginForm component
   };
 
-  const handleLogout = () => {
-    authService.logout();
-    setIsAuthenticated(false);
-    setUserRole(null);
-    setCurrentUser(null);
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-      {!isAuthenticated ? (
-        <Card className="w-full max-w-md bg-white shadow-lg">
-          <CardContent className="p-6">
-            <div className="text-center mb-6">
-              <h1 className="text-3xl font-bold text-red-600">CredCar</h1>
-              <p className="text-gray-600 mt-2">
-                Sistema de Gestão de Vendas e Comissões
-              </p>
-            </div>
-            <LoginForm onLogin={handleLogin} />
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="w-full">
-          {userRole === "admin" ? (
-            <AdminDashboard onLogout={handleLogout} />
-          ) : (
-            <RepresentativeDashboard onLogout={handleLogout} />
-          )}
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-red-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Carregando sistema...</p>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return <LoginForm onLogin={handleLoginSuccess} />;
 };
 
 export default Home;

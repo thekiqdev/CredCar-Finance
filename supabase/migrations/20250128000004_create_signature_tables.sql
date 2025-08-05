@@ -20,10 +20,28 @@ CREATE TABLE IF NOT EXISTS contract_documents (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Create electronic signature fields table
+CREATE TABLE IF NOT EXISTS electronic_signature_fields (
+  id SERIAL PRIMARY KEY,
+  contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  signature_id VARCHAR(255) NOT NULL UNIQUE,
+  signer_name VARCHAR(255) NOT NULL,
+  signer_cpf VARCHAR(11) NOT NULL,
+  signature_url TEXT,
+  signed_at TIMESTAMP WITH TIME ZONE,
+  client_ip VARCHAR(45),
+  status VARCHAR(50) DEFAULT 'pending',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_contract_signatures_contract_id ON contract_signatures(contract_id);
 CREATE INDEX IF NOT EXISTS idx_contract_documents_contract_id ON contract_documents(contract_id);
+CREATE INDEX IF NOT EXISTS idx_electronic_signature_fields_contract_id ON electronic_signature_fields(contract_id);
+CREATE INDEX IF NOT EXISTS idx_electronic_signature_fields_signature_id ON electronic_signature_fields(signature_id);
 
 -- Enable realtime for the new tables
-ALTER PUBLICATION supabase_realtime ADD TABLE contract_signatures;
-ALTER PUBLICATION supabase_realtime ADD TABLE contract_documents;
+alter publication supabase_realtime add table contract_signatures;
+alter publication supabase_realtime add table contract_documents;
+alter publication supabase_realtime add table electronic_signature_fields;

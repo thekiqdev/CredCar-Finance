@@ -9,9 +9,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, FileText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ArrowLeft, Save, FileText, PenTool } from "lucide-react";
 import { Editor } from "@tinymce/tinymce-react";
 import { contractTemplateService } from "../../lib/supabase";
+import SignatureCanvas from "@/components/ui/signature-canvas";
 
 interface CommissionTable {
   id: number;
@@ -46,7 +56,7 @@ interface ContractContentEditorProps {
   selectedQuota: Quota;
   selectedGroup: Group;
   clientData: ClientData;
-  onContentSubmit: (content: string) => void;
+  onContentSubmit: (content: string, signatureFields?: any[]) => void;
   onBack: () => void;
 }
 
@@ -62,6 +72,20 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+
+  // Signature modal states
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [currentSignatureId, setCurrentSignatureId] = useState<string | null>(
+    null,
+  );
+  const [signerName, setSignerName] = useState("");
+  const [signerCPF, setSignerCPF] = useState("");
+  const [signatureBlocks, setSignatureBlocks] = useState<
+    Map<
+      string,
+      { name: string; cpf: string; signed: boolean; imageUrl?: string }
+    >
+  >(new Map());
   const getDefaultContent = () =>
     `
 <h1>CONTRATO DE CONSÓRCIO</h1>
@@ -105,7 +129,7 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
 <p><strong>Assinatura do Representante:</strong> _________________________</p>
   `.trim();
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (editorRef.current) {
       const content = editorRef.current.getContent();
       if (content.trim()) {
@@ -115,6 +139,138 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
       }
     }
   };
+
+  // Generate unique signature ID
+  const generateSignatureId = () => {
+    return `signature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Insert signature block into editor
+  const insertSignatureBlock = () => {
+    if (!signerName.trim() || !signerCPF.trim()) {
+      alert("Por favor, preencha o nome e CPF do signatário.");
+      return;
+    }
+
+    const signatureId = generateSignatureId();
+    const formattedCPF = signerCPF
+      .replace(/\D/g, "")
+      .replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+
+    // Create signature block HTML
+    const signatureBlockHtml = `
+      <div class="signature-field-pending" data-signature-id="${signatureId}" data-signer-name="${signerName}" data-signer-cpf="${signerCPF.replace(/\D/g, "")}" style="border: 2px dashed #ef4444; padding: 20px; margin: 20px 0; background-color: #fef2f2; text-align: center; border-radius: 8px; cursor: pointer;" onclick="window.openSignatureModal('${signatureId}')">
+        <div style="margin-bottom: 15px;">
+          <div style="margin-bottom: 10px;">
+            <strong style="color: #dc2626; font-size: 16px;">✍️ Campo de Assinatura</strong>
+          </div>
+          <div style="border: 2px dashed #ef4444; padding: 20px; background-color: white; display: inline-block; border-radius: 8px; min-width: 300px; min-height: 80px; display: flex; align-items: center; justify-content: center;">
+            <span style="color: #ef4444; font-weight: bold;">CLIQUE PARA ASSINAR</span>
+          </div>
+        </div>
+        <div style="font-size: 14px; margin-top: 15px; background-color: rgba(239, 68, 68, 0.1); padding: 10px; border-radius: 6px;">
+          <div style="margin-bottom: 5px;"><strong>👤 Nome:</strong> ${signerName}</div>
+          <div style="margin-bottom: 5px;"><strong>🆔 CPF:</strong> ${formattedCPF}</div>
+          <div style="margin-top: 8px; font-size: 12px; color: #dc2626; font-weight: 500;">⚠️ Clique para assinar</div>
+        </div>
+      </div>
+    `;
+
+    // Insert into editor
+    if (editorRef.current) {
+      editorRef.current.insertContent(signatureBlockHtml);
+    }
+
+    // Store signature block info
+    setSignatureBlocks(
+      (prev) =>
+        new Map(
+          prev.set(signatureId, {
+            name: signerName,
+            cpf: signerCPF.replace(/\D/g, ""),
+            signed: false,
+          }),
+        ),
+    );
+
+    // Clear form and close modal
+    setSignerName("");
+    setSignerCPF("");
+    setIsSignatureModalOpen(false);
+  };
+
+  // Open signature modal for signing
+  const openSignatureModal = (signatureId: string) => {
+    const blockInfo = signatureBlocks.get(signatureId);
+    if (blockInfo && !blockInfo.signed) {
+      setCurrentSignatureId(signatureId);
+      setIsSignatureModalOpen(true);
+    }
+  };
+
+  // Handle signature confirmation
+  const handleSignatureConfirm = (signatureDataUrl: string) => {
+    if (!currentSignatureId) return;
+
+    const blockInfo = signatureBlocks.get(currentSignatureId);
+    if (!blockInfo) return;
+
+    // Update signature block in editor
+    const signedBlockHtml = `
+      <div class="signature-field-completed" data-signature-id="${currentSignatureId}" data-signer-name="${blockInfo.name}" data-signer-cpf="${blockInfo.cpf}" style="border: 2px solid #10b981; padding: 20px; margin: 20px 0; background-color: #f0fdf4; text-align: center; border-radius: 8px;">
+        <div style="margin-bottom: 15px;">
+          <div style="margin-bottom: 10px;">
+            <strong style="color: #059669; font-size: 16px;">✅ Assinatura Confirmada</strong>
+          </div>
+          <div style="border: 2px solid #10b981; padding: 10px; background-color: white; display: inline-block; border-radius: 8px;">
+            <img src="${signatureDataUrl}" alt="Assinatura" style="max-width: 300px; max-height: 80px; display: block;" />
+          </div>
+        </div>
+        <div style="font-size: 14px; margin-top: 15px; background-color: rgba(16, 185, 129, 0.1); padding: 10px; border-radius: 6px;">
+          <div style="margin-bottom: 5px;"><strong>👤 Nome:</strong> ${blockInfo.name}</div>
+          <div style="margin-bottom: 5px;"><strong>🆔 CPF:</strong> ${blockInfo.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")}</div>
+          <div style="margin-top: 8px; font-size: 12px; color: #059669; font-weight: 500;">✅ Assinado em ${new Date().toLocaleString("pt-BR")}</div>
+        </div>
+      </div>
+    `;
+
+    // Replace the pending signature block with the signed one
+    if (editorRef.current) {
+      const content = editorRef.current.getContent();
+      const updatedContent = content.replace(
+        new RegExp(
+          `<div class="signature-field-pending"[^>]*data-signature-id="${currentSignatureId}"[^>]*>[\\s\\S]*?</div>`,
+          "g",
+        ),
+        signedBlockHtml,
+      );
+      editorRef.current.setContent(updatedContent);
+    }
+
+    // Update signature blocks state
+    setSignatureBlocks(
+      (prev) =>
+        new Map(
+          prev.set(currentSignatureId, {
+            ...blockInfo,
+            signed: true,
+            imageUrl: signatureDataUrl,
+          }),
+        ),
+    );
+
+    // Reset modal state
+    setCurrentSignatureId(null);
+    setIsSignatureModalOpen(false);
+  };
+
+  // Setup global function for signature modal
+  useEffect(() => {
+    (window as any).openSignatureModal = openSignatureModal;
+    return () => {
+      delete (window as any).openSignatureModal;
+    };
+  }, [signatureBlocks]);
 
   // Removido o handleEditorChange para evitar re-renderizações desnecessárias
   // O TinyMCE gerencia seu próprio estado interno
@@ -376,99 +532,13 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
               statusbar: true,
               elementpath: false,
               setup: (editor) => {
-                // Removido o listener de 'change' que causava re-renderizações
-
-                // Function to insert signature
-                const insertSignature = () => {
-                  const signerName = prompt("Nome do signatário:");
-                  if (!signerName) return;
-
-                  const signerCPF = prompt("CPF do signatário:");
-                  if (!signerCPF) return;
-
-                  const signatureId = "signature_" + Date.now();
-                  const signatureHtml = `
-                        <div class="signature-field" data-signature-id="${signatureId}" style="border: 2px dashed #ccc; padding: 20px; margin: 20px 0; background-color: #f9f9f9; text-align: center;">
-                          <div style="margin-bottom: 10px;">
-                            <strong>Campo de Assinatura</strong>
-                          </div>
-                          <div style="margin-bottom: 15px;">
-                            <div style="border-bottom: 1px solid #000; width: 300px; height: 40px; margin: 0 auto; display: inline-block;"></div>
-                          </div>
-                          <div style="font-size: 12px; color: #666;">
-                            <div><strong>Nome:</strong> ${signerName}</div>
-                            <div><strong>CPF:</strong> ${signerCPF}</div>
-                          </div>
-                        </div>
-                      `;
-
-                  editor.insertContent(signatureHtml);
-                };
-
-                // Add custom signature button
+                // Add signature button to toolbar
                 editor.ui.registry.addButton("signature", {
                   text: "Assinatura",
-                  tooltip: "Inserir campo de assinatura",
-                  onAction: insertSignature,
-                });
-
-                // Add context menu item for inserting signature
-                editor.ui.registry.addMenuItem("insertsignature", {
-                  text: "Inserir Assinatura",
                   icon: "edit-block",
-                  onAction: insertSignature,
-                });
-
-                // Add context menu
-                editor.ui.registry.addContextMenu("insertsignature", {
-                  update: (element) => {
-                    return "insertsignature";
-                  },
-                });
-
-                // Add context menu for editing signature fields
-                editor.ui.registry.addContextMenu("signature", {
-                  update: (element) => {
-                    const signatureField = element.closest(".signature-field");
-                    if (signatureField) {
-                      return "editsignature";
-                    }
-                    return "";
-                  },
-                });
-
-                // Add edit signature menu item
-                editor.ui.registry.addMenuItem("editsignature", {
-                  text: "Editar Assinatura",
+                  tooltip: "Inserir campo de assinatura",
                   onAction: () => {
-                    const selectedElement = editor.selection.getNode();
-                    const signatureField =
-                      selectedElement.closest(".signature-field");
-
-                    if (signatureField) {
-                      const currentName = signatureField
-                        .querySelector("div:last-child div:first-child")
-                        .textContent.replace("Nome: ", "");
-                      const currentCPF = signatureField
-                        .querySelector("div:last-child div:last-child")
-                        .textContent.replace("CPF: ", "");
-
-                      const newName = prompt(
-                        "Nome do signatário:",
-                        currentName,
-                      );
-                      if (newName === null) return;
-
-                      const newCPF = prompt("CPF do signatário:", currentCPF);
-                      if (newCPF === null) return;
-
-                      signatureField.querySelector(
-                        "div:last-child div:first-child",
-                      ).innerHTML = `<strong>Nome:</strong> ${newName}`;
-                      signatureField.querySelector(
-                        "div:last-child div:last-child",
-                      ).innerHTML = `<strong>CPF:</strong> ${newCPF}`;
-                    }
+                    setIsSignatureModalOpen(true);
                   },
                 });
               },
@@ -476,6 +546,106 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
           />
         </div>
       </div>
+
+      {/* Signature Modal */}
+      <Dialog
+        open={isSignatureModalOpen}
+        onOpenChange={setIsSignatureModalOpen}
+      >
+        <DialogContent
+          className="sm:max-w-md bg-white"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PenTool className="h-5 w-5" />
+              {currentSignatureId
+                ? "Assinar Documento"
+                : "Inserir Campo de Assinatura"}
+            </DialogTitle>
+            <DialogDescription>
+              {currentSignatureId
+                ? "Desenhe sua assinatura no campo abaixo para confirmar."
+                : "Preencha os dados do signatário para criar um campo de assinatura."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!currentSignatureId ? (
+            // Form for creating signature block
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="signer-name">Nome do Signatário</Label>
+                <Input
+                  id="signer-name"
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  placeholder="Digite o nome completo"
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signer-cpf">CPF do Signatário</Label>
+                <Input
+                  id="signer-cpf"
+                  value={signerCPF}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, "");
+                    if (value.length <= 11) {
+                      const formatted = value.replace(
+                        /(\d{3})(\d{3})(\d{3})(\d{2})/,
+                        "$1.$2.$3-$4",
+                      );
+                      setSignerCPF(formatted);
+                    }
+                  }}
+                  placeholder="000.000.000-00"
+                  className="w-full"
+                  maxLength={14}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsSignatureModalOpen(false);
+                setCurrentSignatureId(null);
+                setSignerName("");
+                setSignerCPF("");
+              }}
+            >
+              Cancelar
+            </Button>
+            {!currentSignatureId ? (
+              <Button
+                type="button"
+                onClick={insertSignatureBlock}
+                disabled={!signerName.trim() || !signerCPF.trim()}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Inserir Campo
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Signature Canvas Modal */}
+      {currentSignatureId && (
+        <SignatureCanvas
+          isOpen={isSignatureModalOpen && !!currentSignatureId}
+          onClose={() => {
+            setIsSignatureModalOpen(false);
+            setCurrentSignatureId(null);
+          }}
+          onConfirm={handleSignatureConfirm}
+          title="Desenhe sua assinatura"
+        />
+      )}
     </div>
   );
 };

@@ -9,6 +9,7 @@ import DocumentUpload from "./components/auth/DocumentUpload";
 import SalesSimulator from "./components/sales/SalesSimulator";
 import ContractDetails from "./components/sales/ContractDetails";
 import SignaturePage from "./components/sales/SignaturePage";
+import ContractViewOnly from "./components/sales/ContractViewOnly";
 import routes from "tempo-routes";
 
 function App() {
@@ -38,6 +39,8 @@ function App() {
         <Route path="/representative/:id" element={<RepresentativeProfile />} />
         <Route path="/contract/:id" element={<ContractDetails />} />
         <Route path="/sign/:id" element={<SignaturePage />} />
+        <Route path="/sign/:id/:signatureId" element={<SignaturePage />} />
+        <Route path="/view/:id" element={<ContractViewOnly />} />
       </Routes>
     </Suspense>
   );

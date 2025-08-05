@@ -33,19 +33,8 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
       const ctx = canvas.getContext("2d");
       if (ctx) {
         // Set canvas size - wider for horizontal signatures
-        const dpr = window.devicePixelRatio || 1;
-        const rect = canvas.getBoundingClientRect();
-
-        // Set actual canvas size in memory (scaled for high DPI)
-        canvas.width = 600 * dpr;
-        canvas.height = 150 * dpr;
-
-        // Scale the canvas back down using CSS
-        canvas.style.width = "600px";
-        canvas.style.height = "150px";
-
-        // Scale the drawing context so everything draws at the correct size
-        ctx.scale(dpr, dpr);
+        canvas.width = 600;
+        canvas.height = 150;
 
         // Set drawing styles
         ctx.strokeStyle = "#000000";
@@ -55,7 +44,7 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
 
         // Clear canvas with white background
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, 600, 150);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         setHasSignature(false);
       }
@@ -67,12 +56,8 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x =
-      ((e.clientX - rect.left) * scaleX) / (window.devicePixelRatio || 1);
-    const y =
-      ((e.clientY - rect.top) * scaleY) / (window.devicePixelRatio || 1);
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
@@ -89,12 +74,8 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x =
-      ((e.clientX - rect.left) * scaleX) / (window.devicePixelRatio || 1);
-    const y =
-      ((e.clientY - rect.top) * scaleY) / (window.devicePixelRatio || 1);
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
@@ -115,7 +96,7 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, 600, 150);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       setHasSignature(false);
     }
   };
@@ -136,12 +117,8 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x =
-      ((touch.clientX - rect.left) * scaleX) / (window.devicePixelRatio || 1);
-    const y =
-      ((touch.clientY - rect.top) * scaleY) / (window.devicePixelRatio || 1);
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
@@ -162,10 +139,8 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const x =
-      ((touch.clientX - rect.left) * scaleX) / (window.devicePixelRatio || 1);
-    const y =
-      ((touch.clientY - rect.top) * scaleY) / (window.devicePixelRatio || 1);
+    const x = (touch.clientX - rect.left) * scaleX;
+    const y = (touch.clientY - rect.top) * scaleY;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
@@ -206,12 +181,6 @@ const SignatureCanvas: React.FC<SignatureCanvasProps> = ({
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
-              style={{
-                width: "600px",
-                height: "150px",
-                display: "block",
-                imageRendering: "pixelated",
-              }}
             />
           </div>
 
