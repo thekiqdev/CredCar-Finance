@@ -9,17 +9,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, ArrowLeft, Percent, CreditCard } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { commissionPlansService } from "@/lib/supabase";
 
-interface CommissionTable {
+interface CommissionPlan {
   id: number;
-  name: string;
-  commission_percentage: number;
-  payment_details: string;
+  nome: string;
+  descricao: string;
+  ativo: boolean;
 }
 
 interface CommissionTableSelectionProps {
-  onTableSelect: (table: CommissionTable) => void;
+  onTableSelect: (plan: CommissionPlan) => void;
   onBack?: () => void;
 }
 
@@ -27,39 +27,34 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
   onTableSelect,
   onBack,
 }) => {
-  const [tables, setTables] = useState<CommissionTable[]>([]);
-  const [selectedTable, setSelectedTable] = useState<CommissionTable | null>(
-    null,
-  );
+  const [plans, setPlans] = useState<CommissionPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<CommissionPlan | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchCommissionTables();
+    fetchCommissionPlans();
   }, []);
 
-  const fetchCommissionTables = async () => {
+  const fetchCommissionPlans = async () => {
     try {
-      const { data, error } = await supabase
-        .from("commission_tables")
-        .select("*")
-        .order("name");
-
-      if (error) throw error;
-      setTables(data || []);
+      const data = await commissionPlansService.getAll();
+      // Filter only active plans
+      const activePlans = data.filter((plan) => plan.ativo !== false);
+      setPlans(activePlans);
     } catch (error) {
-      console.error("Error fetching commission tables:", error);
+      console.error("Error fetching commission plans:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTableSelect = (table: CommissionTable) => {
-    setSelectedTable(table);
+  const handlePlanSelect = (plan: CommissionPlan) => {
+    setSelectedPlan(plan);
   };
 
   const handleContinue = () => {
-    if (selectedTable) {
-      onTableSelect(selectedTable);
+    if (selectedPlan) {
+      onTableSelect(selectedPlan);
     }
   };
 
@@ -68,7 +63,7 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
       <div className="flex items-center justify-center min-h-[400px] bg-white">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando tabelas de comissão...</p>
+          <p className="text-gray-600">Carregando planos de comissão...</p>
         </div>
       </div>
     );
@@ -79,33 +74,37 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Seleção da Tabela de Comissão
+            Seleção do Plano de Comissão
           </h1>
           <p className="text-gray-600">
-            Escolha a tabela de comissão que será aplicada a este contrato
+            Escolha o plano de comissão que será aplicado a este contrato
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {tables.map((table) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          {plans.map((plan) => (
             <Card
-              key={table.id}
+              key={plan.id}
               className={`cursor-pointer transition-all duration-200 hover:shadow-lg ${
-                selectedTable?.id === table.id
+                selectedPlan?.id === plan.id
                   ? "ring-2 ring-red-500 bg-red-50"
                   : "hover:shadow-md"
               }`}
-              onClick={() => handleTableSelect(table)}
+              onClick={() => handlePlanSelect(plan)}
             >
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg font-semibold">
-                    {table.name}
+                    {plan.nome}
                   </CardTitle>
-                  <Badge variant="outline" className="bg-red-100 text-red-700">
-                    <Percent className="w-3 h-3 mr-1" />
-                    {table.commission_percentage}%
-                  </Badge>
+                  {plan.ativo && (
+                    <Badge
+                      variant="outline"
+                      className="bg-green-100 text-green-700"
+                    >
+                      Ativo
+                    </Badge>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -113,16 +112,16 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
                   <div className="flex items-start">
                     <CreditCard className="w-4 h-4 text-gray-500 mt-0.5 mr-2 flex-shrink-0" />
                     <p className="text-sm text-gray-600 leading-relaxed">
-                      {table.payment_details ||
-                        "Detalhes de pagamento não especificados"}
+                      {plan.descricao ||
+                        "Plano de comissão disponível para contratos"}
                     </p>
                   </div>
 
                   <div className="pt-2">
-                    {selectedTable?.id === table.id ? (
+                    {selectedPlan?.id === plan.id ? (
                       <div className="flex items-center text-red-600 text-sm font-medium">
                         <div className="w-2 h-2 bg-red-600 rounded-full mr-2"></div>
-                        Selecionada
+                        Selecionado
                       </div>
                     ) : (
                       <div className="text-gray-400 text-sm">
@@ -136,14 +135,14 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
           ))}
         </div>
 
-        {tables.length === 0 && (
+        {plans.length === 0 && (
           <Card className="text-center py-12">
             <CardContent>
               <p className="text-gray-500 mb-4">
-                Nenhuma tabela de comissão encontrada
+                Nenhum plano de comissão encontrado
               </p>
               <p className="text-sm text-gray-400">
-                Entre em contato com o administrador para configurar as tabelas
+                Entre em contato com o administrador para configurar os planos
               </p>
             </CardContent>
           </Card>
@@ -159,7 +158,7 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
           {!onBack && <div></div>}
           <Button
             onClick={handleContinue}
-            disabled={!selectedTable}
+            disabled={!selectedPlan}
             className="bg-red-600 hover:bg-red-700 px-8"
             size="lg"
           >

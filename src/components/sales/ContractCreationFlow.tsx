@@ -1,16 +1,26 @@
 import React, { useState } from "react";
 import { supabase, authService, representativeService } from "@/lib/supabase";
 import CommissionTableSelection from "./CommissionTableSelection";
+import CreditValueSelection from "./CreditValueSelection";
 import QuotaSelection from "./QuotaSelection";
 import ClientRegistration from "./ClientRegistration";
 import ContractContentEditor from "./ContractContentEditor";
 import RepresentativeSelection from "./RepresentativeSelection";
 
-interface CommissionTable {
+interface CommissionPlan {
   id: number;
-  name: string;
-  commission_percentage: number;
-  payment_details: string;
+  nome: string;
+  descricao: string;
+  ativo: boolean;
+}
+
+interface CreditRange {
+  id: number;
+  plano_id: number;
+  valor_credito: number;
+  valor_primeira_parcela: number;
+  valor_parcelas_restantes: number;
+  numero_total_parcelas: number;
 }
 
 interface Group {
@@ -37,6 +47,7 @@ interface ClientData {
 type FlowStep =
   | "representative-selection"
   | "table-selection"
+  | "credit-selection"
   | "quota-selection"
   | "client-registration"
   | "contract-content"
@@ -56,9 +67,9 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
   );
   const [selectedRepresentative, setSelectedRepresentative] =
     useState<any>(null);
-  const [selectedTable, setSelectedTable] = useState<CommissionTable | null>(
-    null,
-  );
+  const [selectedPlan, setSelectedPlan] = useState<CommissionPlan | null>(null);
+  const [selectedCreditRange, setSelectedCreditRange] =
+    useState<CreditRange | null>(null);
   const [selectedQuota, setSelectedQuota] = useState<Quota | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [clientData, setClientData] = useState<ClientData | null>(null);
@@ -69,8 +80,13 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
     setCurrentStep("table-selection");
   };
 
-  const handleTableSelect = (table: CommissionTable) => {
-    setSelectedTable(table);
+  const handlePlanSelect = (plan: CommissionPlan) => {
+    setSelectedPlan(plan);
+    setCurrentStep("credit-selection");
+  };
+
+  const handleCreditSelect = (creditRange: CreditRange) => {
+    setSelectedCreditRange(creditRange);
     setCurrentStep("quota-selection");
   };
 
@@ -195,11 +211,18 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
             contract_code: contractNumber, // Using 'contract_code' as per schema
             representative_id: contractRepresentativeId,
             client_id: parseInt(clientId), // Convert to number as per schema
-            commission_table_id: selectedTable!.id,
+            commission_table_id: selectedPlan!.id, // Using the plan ID
             quota_id: selectedQuota!.id, // Add quota_id to link the contract to the quota
-            total_value: 50000.0, // Sample amount
-            remaining_value: 49000.0, // Sample remaining amount
-            total_installments: 80, // 80 months
+            credit_amount: selectedCreditRange!.valor_credito.toString(),
+            total_value: selectedCreditRange!.valor_credito.toString(),
+            remaining_value: (
+              selectedCreditRange!.valor_credito * 0.98
+            ).toString(), // Sample remaining amount (98% of total)
+            total_installments: selectedCreditRange!.numero_total_parcelas,
+            first_payment:
+              selectedCreditRange!.valor_primeira_parcela.toString(),
+            remaining_payments:
+              selectedCreditRange!.valor_parcelas_restantes.toString(),
             paid_installments: 0,
             status: "Pendente",
             contract_content: contentToSave || contractContent, // Save the HTML content
@@ -257,7 +280,12 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
     } else {
       setCurrentStep("table-selection");
     }
-    setSelectedTable(null);
+    setSelectedPlan(null);
+  };
+
+  const handleBackToCreditSelection = () => {
+    setCurrentStep("credit-selection");
+    setSelectedCreditRange(null);
   };
 
   const handleBackToQuotaSelection = () => {
@@ -318,7 +346,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
       {currentStep === "table-selection" && (
         <div className="p-6">
           <CommissionTableSelection
-            onTableSelect={handleTableSelect}
+            onTableSelect={handlePlanSelect}
             onBack={
               isAdminMode ? handleBackToRepresentativeSelection : undefined
             }
@@ -326,23 +354,38 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
         </div>
       )}
 
-      {currentStep === "quota-selection" && selectedTable && (
+      {currentStep === "credit-selection" && selectedPlan && (
         <div className="p-6">
-          <QuotaSelection
-            selectedTable={selectedTable}
-            onQuotaSelect={handleQuotaSelect}
+          <CreditValueSelection
+            selectedPlan={selectedPlan}
+            onCreditSelect={handleCreditSelect}
             onBack={handleBackToTableSelection}
           />
         </div>
       )}
 
+      {currentStep === "quota-selection" &&
+        selectedPlan &&
+        selectedCreditRange && (
+          <div className="p-6">
+            <QuotaSelection
+              selectedPlan={selectedPlan}
+              selectedCreditRange={selectedCreditRange}
+              onQuotaSelect={handleQuotaSelect}
+              onBack={handleBackToCreditSelection}
+            />
+          </div>
+        )}
+
       {currentStep === "client-registration" &&
-        selectedTable &&
+        selectedPlan &&
+        selectedCreditRange &&
         selectedQuota &&
         selectedGroup && (
           <div className="p-6">
             <ClientRegistration
-              selectedTable={selectedTable}
+              selectedPlan={selectedPlan}
+              selectedCreditRange={selectedCreditRange}
               selectedQuota={selectedQuota}
               selectedGroup={selectedGroup}
               onClientSubmit={handleClientSubmit}
@@ -352,13 +395,15 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
         )}
 
       {currentStep === "contract-content" &&
-        selectedTable &&
+        selectedPlan &&
+        selectedCreditRange &&
         selectedQuota &&
         selectedGroup &&
         clientData && (
           <div className="p-6">
             <ContractContentEditor
-              selectedTable={selectedTable}
+              selectedPlan={selectedPlan}
+              selectedCreditRange={selectedCreditRange}
               selectedQuota={selectedQuota}
               selectedGroup={selectedGroup}
               clientData={clientData}

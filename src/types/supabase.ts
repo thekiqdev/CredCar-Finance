@@ -101,6 +101,35 @@ export type Database = {
         }
         Relationships: []
       }
+      condicoes_antecipacao: {
+        Row: {
+          faixa_credito_id: number
+          id: number
+          percentual: number
+          valor_calculado: number
+        }
+        Insert: {
+          faixa_credito_id: number
+          id?: number
+          percentual: number
+          valor_calculado: number
+        }
+        Update: {
+          faixa_credito_id?: number
+          id?: number
+          percentual?: number
+          valor_calculado?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "condicoes_antecipacao_faixa_credito_id_fkey"
+            columns: ["faixa_credito_id"]
+            isOneToOne: false
+            referencedRelation: "faixas_de_credito"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_documents: {
         Row: {
           contract_id: number
@@ -409,6 +438,41 @@ export type Database = {
           },
         ]
       }
+      faixas_de_credito: {
+        Row: {
+          id: number
+          numero_total_parcelas: number
+          plano_id: number
+          valor_credito: number
+          valor_parcelas_restantes: number
+          valor_primeira_parcela: number
+        }
+        Insert: {
+          id?: number
+          numero_total_parcelas?: number
+          plano_id: number
+          valor_credito: number
+          valor_parcelas_restantes: number
+          valor_primeira_parcela: number
+        }
+        Update: {
+          id?: number
+          numero_total_parcelas?: number
+          plano_id?: number
+          valor_credito?: number
+          valor_parcelas_restantes?: number
+          valor_primeira_parcela?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "faixas_de_credito_plano_id_fkey"
+            columns: ["plano_id"]
+            isOneToOne: false
+            referencedRelation: "planos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       groups: {
         Row: {
           available_quotas: number
@@ -485,6 +549,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      planos: {
+        Row: {
+          ativo: boolean | null
+          data_criacao: string | null
+          descricao: string | null
+          id: number
+          nome: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          data_criacao?: string | null
+          descricao?: string | null
+          id?: number
+          nome: string
+        }
+        Update: {
+          ativo?: boolean | null
+          data_criacao?: string | null
+          descricao?: string | null
+          id?: number
+          nome?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {

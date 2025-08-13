@@ -37,21 +37,32 @@ interface Quota {
   reserved_at?: string;
 }
 
-interface CommissionTable {
+interface CommissionPlan {
   id: number;
-  name: string;
-  commission_percentage: number;
-  payment_details: string;
+  nome: string;
+  descricao: string;
+  ativo: boolean;
+}
+
+interface CreditRange {
+  id: number;
+  plano_id: number;
+  valor_credito: number;
+  valor_primeira_parcela: number;
+  valor_parcelas_restantes: number;
+  numero_total_parcelas: number;
 }
 
 interface QuotaSelectionProps {
-  selectedTable: CommissionTable;
+  selectedPlan: CommissionPlan;
+  selectedCreditRange: CreditRange;
   onQuotaSelect: (quota: Quota, group: Group) => void;
   onBack: () => void;
 }
 
 const QuotaSelection: React.FC<QuotaSelectionProps> = ({
-  selectedTable,
+  selectedPlan,
+  selectedCreditRange,
   onQuotaSelect,
   onBack,
 }) => {
@@ -206,9 +217,17 @@ const QuotaSelection: React.FC<QuotaSelectionProps> = ({
                 Escolha um grupo e selecione uma cota disponível
               </p>
             </div>
-            <Badge variant="outline" className="bg-red-100 text-red-700">
-              {selectedTable.name} - {selectedTable.commission_percentage}%
-            </Badge>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="bg-red-100 text-red-700">
+                {selectedPlan.nome}
+              </Badge>
+              <Badge variant="outline" className="bg-blue-100 text-blue-700">
+                {new Intl.NumberFormat("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                }).format(selectedCreditRange.valor_credito)}
+              </Badge>
+            </div>
           </div>
         </div>
 

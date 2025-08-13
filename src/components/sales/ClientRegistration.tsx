@@ -33,11 +33,20 @@ interface Quota {
   status: string;
 }
 
-interface CommissionTable {
+interface CommissionPlan {
   id: number;
-  name: string;
-  commission_percentage: number;
-  payment_details: string;
+  nome: string;
+  descricao: string;
+  ativo: boolean;
+}
+
+interface CreditRange {
+  id: number;
+  plano_id: number;
+  valor_credito: number;
+  valor_primeira_parcela: number;
+  valor_parcelas_restantes: number;
+  numero_total_parcelas: number;
 }
 
 interface ClientData {
@@ -49,7 +58,8 @@ interface ClientData {
 }
 
 interface ClientRegistrationProps {
-  selectedTable: CommissionTable;
+  selectedPlan: CommissionPlan;
+  selectedCreditRange: CreditRange;
   selectedQuota: Quota;
   selectedGroup: Group;
   onClientSubmit: (clientData: ClientData) => void;
@@ -57,7 +67,8 @@ interface ClientRegistrationProps {
 }
 
 const ClientRegistration: React.FC<ClientRegistrationProps> = ({
-  selectedTable,
+  selectedPlan,
+  selectedCreditRange,
   selectedQuota,
   selectedGroup,
   onClientSubmit,
@@ -191,7 +202,13 @@ const ClientRegistration: React.FC<ClientRegistrationProps> = ({
             </div>
             <div className="flex gap-2">
               <Badge variant="outline" className="bg-red-100 text-red-700">
-                {selectedTable.name}
+                {selectedPlan.nome}
+              </Badge>
+              <Badge variant="outline" className="bg-green-100 text-green-700">
+                {new Intl.NumberFormat("pt-BR", {
+                  style: "currency",
+                  currency: "BRL",
+                }).format(selectedCreditRange.valor_credito)}
               </Badge>
               <Badge variant="outline" className="bg-blue-100 text-blue-700">
                 {selectedGroup.name} - Cota #{selectedQuota.quota_number}

@@ -515,6 +515,359 @@ async function verifyPassword(
   return passwordHash === hash;
 }
 
+// Commission Plans service
+export const commissionPlansService = {
+  // Get all plans
+  async getAll() {
+    try {
+      const { data, error } = await supabase
+        .from("planos")
+        .select("*")
+        .order("data_criacao", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching plans:", error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error in commissionPlansService.getAll:", error);
+      throw error;
+    }
+  },
+
+  // Get plan by ID with all related data
+  async getById(planId: number) {
+    try {
+      const { data: plan, error: planError } = await supabase
+        .from("planos")
+        .select("*")
+        .eq("id", planId)
+        .single();
+
+      if (planError) {
+        console.error("Error fetching plan:", planError);
+        throw planError;
+      }
+
+      // Get credit ranges for this plan
+      const { data: creditRanges, error: rangesError } = await supabase
+        .from("faixas_de_credito")
+        .select("*")
+        .eq("plano_id", planId)
+        .order("valor_credito", { ascending: true });
+
+      if (rangesError) {
+        console.error("Error fetching credit ranges:", rangesError);
+        throw rangesError;
+      }
+
+      // Get anticipation conditions for all ranges
+      const rangeIds = (creditRanges || []).map((r) => r.id);
+      let anticipationConditions = [];
+
+      if (rangeIds.length > 0) {
+        // Get anticipation conditions
+        const { data: anticipations, error: anticipationsError } =
+          await supabase
+            .from("condicoes_antecipacao")
+            .select("*")
+            .in("faixa_credito_id", rangeIds)
+            .order("percentual", { ascending: true });
+
+        if (anticipationsError) {
+          console.error(
+            "Error fetching anticipation conditions:",
+            anticipationsError,
+          );
+          throw anticipationsError;
+        }
+
+        anticipationConditions = anticipations || [];
+      }
+
+      return {
+        plan,
+        creditRanges: creditRanges || [],
+        anticipationConditions,
+      };
+    } catch (error) {
+      console.error("Error in commissionPlansService.getById:", error);
+      throw error;
+    }
+  },
+
+  // Create new plan
+  async create(planData: {
+    nome: string;
+    descricao?: string;
+    ativo?: boolean;
+  }) {
+    try {
+      const { data, error } = await supabase
+        .from("planos")
+        .insert({
+          nome: planData.nome,
+          descricao: planData.descricao || null,
+          ativo: planData.ativo !== undefined ? planData.ativo : true,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating plan:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in commissionPlansService.create:", error);
+      throw error;
+    }
+  },
+
+  // Update plan
+  async update(
+    planId: number,
+    updates: {
+      nome?: string;
+      descricao?: string;
+      ativo?: boolean;
+    },
+  ) {
+    try {
+      const { data, error } = await supabase
+        .from("planos")
+        .update(updates)
+        .eq("id", planId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating plan:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in commissionPlansService.update:", error);
+      throw error;
+    }
+  },
+
+  // Delete plan (cascades to related data)
+  async delete(planId: number) {
+    try {
+      const { error } = await supabase.from("planos").delete().eq("id", planId);
+
+      if (error) {
+        console.error("Error deleting plan:", error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in commissionPlansService.delete:", error);
+      throw error;
+    }
+  },
+
+  // Credit Ranges management
+  async createCreditRange(rangeData: {
+    plano_id: number;
+    valor_credito: number;
+    valor_primeira_parcela: number;
+    valor_parcelas_restantes: number;
+    numero_total_parcelas?: number;
+  }) {
+    try {
+      const { data, error } = await supabase
+        .from("faixas_de_credito")
+        .insert({
+          ...rangeData,
+          numero_total_parcelas: rangeData.numero_total_parcelas || 80,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating credit range:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(
+        "Error in commissionPlansService.createCreditRange:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  async updateCreditRange(
+    rangeId: number,
+    updates: {
+      valor_credito?: number;
+      valor_primeira_parcela?: number;
+      valor_parcelas_restantes?: number;
+      numero_total_parcelas?: number;
+    },
+  ) {
+    try {
+      const { data, error } = await supabase
+        .from("faixas_de_credito")
+        .update(updates)
+        .eq("id", rangeId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating credit range:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(
+        "Error in commissionPlansService.updateCreditRange:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  async deleteCreditRange(rangeId: number) {
+    try {
+      const { error } = await supabase
+        .from("faixas_de_credito")
+        .delete()
+        .eq("id", rangeId);
+
+      if (error) {
+        console.error("Error deleting credit range:", error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error(
+        "Error in commissionPlansService.deleteCreditRange:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  // Anticipation Conditions management
+  async createAnticipationCondition(conditionData: {
+    faixa_credito_id: number;
+    percentual: number;
+    valor_calculado: number;
+  }) {
+    try {
+      const { data, error } = await supabase
+        .from("condicoes_antecipacao")
+        .insert(conditionData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating anticipation condition:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(
+        "Error in commissionPlansService.createAnticipationCondition:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  async updateAnticipationCondition(
+    conditionId: number,
+    updates: {
+      percentual?: number;
+      valor_calculado?: number;
+    },
+  ) {
+    try {
+      const { data, error } = await supabase
+        .from("condicoes_antecipacao")
+        .update(updates)
+        .eq("id", conditionId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating anticipation condition:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(
+        "Error in commissionPlansService.updateAnticipationCondition:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  async deleteAnticipationCondition(conditionId: number) {
+    try {
+      const { error } = await supabase
+        .from("condicoes_antecipacao")
+        .delete()
+        .eq("id", conditionId);
+
+      if (error) {
+        console.error("Error deleting anticipation condition:", error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error(
+        "Error in commissionPlansService.deleteAnticipationCondition:",
+        error,
+      );
+      throw error;
+    }
+  },
+
+  // Utility function to generate monthly installments based on total number
+  generateMonthlyInstallments(
+    totalInstallments: number,
+    firstInstallmentValue: number,
+    remainingInstallmentsValue: number,
+  ) {
+    const installments = [];
+
+    // First installment
+    installments.push({
+      numero_parcela: 1,
+      valor_parcela: firstInstallmentValue,
+      vencimento: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+    });
+
+    // Remaining installments
+    for (let i = 2; i <= totalInstallments; i++) {
+      installments.push({
+        numero_parcela: i,
+        valor_parcela: remainingInstallmentsValue,
+        vencimento: new Date(new Date().setMonth(new Date().getMonth() + i)),
+      });
+    }
+
+    return installments;
+  },
+};
+
 // Contract service
 export const contractService = {
   // Get contract by ID with all related data

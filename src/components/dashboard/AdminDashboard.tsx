@@ -9,6 +9,7 @@ import {
   clientService,
   supabase,
   authService,
+  commissionPlansService,
 } from "../../lib/supabase";
 import { Database } from "../../types/supabase";
 import {
@@ -239,6 +240,61 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     },
   ]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  // Commission Plans State
+  const [commissionPlans, setCommissionPlans] = useState([]);
+  const [creditRanges, setCreditRanges] = useState([]);
+  const [installmentConditions, setInstallmentConditions] = useState([]);
+  const [anticipationConditions, setAnticipationConditions] = useState([]);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(true);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [isNewPlanDialogOpen, setIsNewPlanDialogOpen] = useState(false);
+  const [isEditPlanDialogOpen, setIsEditPlanDialogOpen] = useState(false);
+  const [isManagePlanDialogOpen, setIsManagePlanDialogOpen] = useState(false);
+  const [newPlan, setNewPlan] = useState({
+    nome: "",
+    descricao: "",
+    ativo: true,
+  });
+  const [editingPlan, setEditingPlan] = useState(null);
+
+  // Credit Range Management State
+  const [isNewCreditRangeDialogOpen, setIsNewCreditRangeDialogOpen] =
+    useState(false);
+  const [isEditCreditRangeDialogOpen, setIsEditCreditRangeDialogOpen] =
+    useState(false);
+  const [selectedCreditRange, setSelectedCreditRange] = useState(null);
+  const [newCreditRange, setNewCreditRange] = useState({
+    valor_credito: "",
+    valor_primeira_parcela: "",
+    valor_parcelas_restantes: "",
+    numero_total_parcelas: "80",
+  });
+
+  // Installment Conditions Management State
+  const [isManageInstallmentsDialogOpen, setIsManageInstallmentsDialogOpen] =
+    useState(false);
+  const [isNewInstallmentDialogOpen, setIsNewInstallmentDialogOpen] =
+    useState(false);
+  const [selectedRangeForInstallments, setSelectedRangeForInstallments] =
+    useState(null);
+  const [newInstallment, setNewInstallment] = useState({
+    numero_parcela: "",
+    valor_parcela: "",
+  });
+
+  // Anticipation Conditions Management State
+  const [isManageAnticipationsDialogOpen, setIsManageAnticipationsDialogOpen] =
+    useState(false);
+  const [isNewAnticipationDialogOpen, setIsNewAnticipationDialogOpen] =
+    useState(false);
+  const [selectedRangeForAnticipations, setSelectedRangeForAnticipations] =
+    useState(null);
+  const [newAnticipation, setNewAnticipation] = useState({
+    percentual: "",
+    valor_calculado: "",
+  });
+
+  // Legacy commission tables for backward compatibility
   const [commissionTables, setCommissionTables] = useState([
     {
       id: "A",
@@ -459,6 +515,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           loadGroups(),
           loadAllClients(),
           loadDashboardStats(),
+          loadCommissionPlans(),
         ]);
         console.log("AdminDashboard: All data loaded successfully");
       } catch (error) {
@@ -629,6 +686,70 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       console.error("Error loading clients:", error);
     } finally {
       setIsLoadingClients(false);
+    }
+  };
+
+  const loadCommissionPlans = async () => {
+    try {
+      setIsLoadingPlans(true);
+      console.log("Loading commission plans...");
+
+      // Load plans
+      const { data: plansData, error: plansError } = await supabase
+        .from("planos")
+        .select("*")
+        .order("data_criacao", { ascending: false });
+
+      if (plansError) {
+        console.error("Error loading plans:", plansError);
+        throw plansError;
+      }
+
+      // Load credit ranges
+      const { data: rangesData, error: rangesError } = await supabase
+        .from("faixas_de_credito")
+        .select("*")
+        .order("valor_credito", { ascending: true });
+
+      if (rangesError) {
+        console.error("Error loading credit ranges:", rangesError);
+        throw rangesError;
+      }
+
+      // Note: condicoes_parcelas table was removed in the latest migration
+      // Installments are now generated automatically based on total number
+      const installmentsData = [];
+
+      // Load anticipation conditions
+      const { data: anticipationData, error: anticipationError } =
+        await supabase
+          .from("condicoes_antecipacao")
+          .select("*")
+          .order("percentual", { ascending: true });
+
+      if (anticipationError) {
+        console.error(
+          "Error loading anticipation conditions:",
+          anticipationError,
+        );
+        throw anticipationError;
+      }
+
+      setCommissionPlans(plansData || []);
+      setCreditRanges(rangesData || []);
+      setInstallmentConditions(installmentsData || []);
+      setAnticipationConditions(anticipationData || []);
+
+      console.log("Commission plans loaded successfully:", {
+        plans: plansData?.length || 0,
+        ranges: rangesData?.length || 0,
+        installments: 0, // No longer using individual installment conditions
+        anticipation: anticipationData?.length || 0,
+      });
+    } catch (error) {
+      console.error("Error loading commission plans:", error);
+    } finally {
+      setIsLoadingPlans(false);
     }
   };
 
@@ -1532,6 +1653,239 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       console.log(`Commission table ${tableId} deleted`);
     } else {
       alert("Não é possível excluir uma tabela com contratos ativos");
+    }
+  };
+
+  // Commission Plans Management Functions
+  const handleCreatePlan = async () => {
+    try {
+      if (!newPlan.nome.trim()) {
+        alert("Nome do plano é obrigatório");
+        return;
+      }
+
+      await commissionPlansService.create({
+        nome: newPlan.nome,
+        descricao: newPlan.descricao,
+        ativo: newPlan.ativo,
+      });
+
+      await loadCommissionPlans();
+      setIsNewPlanDialogOpen(false);
+      setNewPlan({ nome: "", descricao: "", ativo: true });
+      alert("Plano criado com sucesso!");
+    } catch (error) {
+      console.error("Error creating plan:", error);
+      alert("Erro ao criar plano. Tente novamente.");
+    }
+  };
+
+  const handleEditPlan = (plan) => {
+    setEditingPlan(plan);
+    setIsEditPlanDialogOpen(true);
+  };
+
+  const handleUpdatePlan = async () => {
+    try {
+      if (!editingPlan?.nome?.trim()) {
+        alert("Nome do plano é obrigatório");
+        return;
+      }
+
+      await commissionPlansService.update(editingPlan.id, {
+        nome: editingPlan.nome,
+        descricao: editingPlan.descricao,
+        ativo: editingPlan.ativo,
+      });
+
+      await loadCommissionPlans();
+      setIsEditPlanDialogOpen(false);
+      setEditingPlan(null);
+      alert("Plano atualizado com sucesso!");
+    } catch (error) {
+      console.error("Error updating plan:", error);
+      alert("Erro ao atualizar plano. Tente novamente.");
+    }
+  };
+
+  const handleDeletePlan = async (planId: number) => {
+    const confirmDelete = window.confirm(
+      "Tem certeza que deseja excluir este plano? Esta ação irá remover todas as faixas de crédito, condições de parcelas e antecipação associadas.",
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await commissionPlansService.delete(planId);
+      await loadCommissionPlans();
+      alert("Plano excluído com sucesso!");
+    } catch (error) {
+      console.error("Error deleting plan:", error);
+      alert("Erro ao excluir plano. Tente novamente.");
+    }
+  };
+
+  const handleManagePlan = (plan) => {
+    setSelectedPlan(plan);
+    setIsManagePlanDialogOpen(true);
+  };
+
+  // Credit Range Management Functions
+  const handleCreateCreditRange = async () => {
+    try {
+      if (
+        !selectedPlan ||
+        !newCreditRange.valor_credito ||
+        !newCreditRange.valor_primeira_parcela ||
+        !newCreditRange.valor_parcelas_restantes ||
+        !newCreditRange.numero_total_parcelas
+      ) {
+        alert("Todos os campos são obrigatórios");
+        return;
+      }
+
+      await commissionPlansService.createCreditRange({
+        plano_id: selectedPlan.id,
+        valor_credito: parseFloat(newCreditRange.valor_credito),
+        valor_primeira_parcela: parseFloat(
+          newCreditRange.valor_primeira_parcela,
+        ),
+        valor_parcelas_restantes: parseFloat(
+          newCreditRange.valor_parcelas_restantes,
+        ),
+        numero_total_parcelas:
+          parseInt(newCreditRange.numero_total_parcelas) || 80,
+      });
+
+      await loadCommissionPlans();
+      setIsNewCreditRangeDialogOpen(false);
+      setNewCreditRange({
+        valor_credito: "",
+        valor_primeira_parcela: "",
+        valor_parcelas_restantes: "",
+        numero_total_parcelas: "80",
+      });
+      alert("Faixa de crédito criada com sucesso!");
+    } catch (error) {
+      console.error("Error creating credit range:", error);
+      alert("Erro ao criar faixa de crédito. Tente novamente.");
+    }
+  };
+
+  const handleDeleteCreditRange = async (rangeId) => {
+    const confirmDelete = window.confirm(
+      "Tem certeza que deseja excluir esta faixa de crédito? Todas as condições de parcelas e antecipação associadas também serão removidas.",
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await commissionPlansService.deleteCreditRange(rangeId);
+      await loadCommissionPlans();
+      alert("Faixa de crédito excluída com sucesso!");
+    } catch (error) {
+      console.error("Error deleting credit range:", error);
+      alert("Erro ao excluir faixa de crédito. Tente novamente.");
+    }
+  };
+
+  // Installment Conditions Management Functions
+  const handleManageInstallments = (creditRange) => {
+    setSelectedRangeForInstallments(creditRange);
+    setIsManageInstallmentsDialogOpen(true);
+  };
+
+  const handleCreateInstallment = async () => {
+    try {
+      if (
+        !selectedRangeForInstallments ||
+        !newInstallment.numero_parcela ||
+        !newInstallment.valor_parcela
+      ) {
+        alert("Todos os campos são obrigatórios");
+        return;
+      }
+
+      await commissionPlansService.createInstallmentCondition({
+        faixa_credito_id: selectedRangeForInstallments.id,
+        numero_parcela: parseInt(newInstallment.numero_parcela),
+        valor_parcela: parseFloat(newInstallment.valor_parcela),
+      });
+
+      await loadCommissionPlans();
+      setIsNewInstallmentDialogOpen(false);
+      setNewInstallment({ numero_parcela: "", valor_parcela: "" });
+      alert("Condição de parcela criada com sucesso!");
+    } catch (error) {
+      console.error("Error creating installment condition:", error);
+      alert("Erro ao criar condição de parcela. Tente novamente.");
+    }
+  };
+
+  const handleDeleteInstallment = async (installmentId) => {
+    const confirmDelete = window.confirm(
+      "Tem certeza que deseja excluir esta condição de parcela?",
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await commissionPlansService.deleteInstallmentCondition(installmentId);
+      await loadCommissionPlans();
+      alert("Condição de parcela excluída com sucesso!");
+    } catch (error) {
+      console.error("Error deleting installment condition:", error);
+      alert("Erro ao excluir condição de parcela. Tente novamente.");
+    }
+  };
+
+  // Anticipation Conditions Management Functions
+  const handleManageAnticipations = (creditRange) => {
+    setSelectedRangeForAnticipations(creditRange);
+    setIsManageAnticipationsDialogOpen(true);
+  };
+
+  const handleCreateAnticipation = async () => {
+    try {
+      if (
+        !selectedRangeForAnticipations ||
+        !newAnticipation.percentual ||
+        !newAnticipation.valor_calculado
+      ) {
+        alert("Todos os campos são obrigatórios");
+        return;
+      }
+
+      await commissionPlansService.createAnticipationCondition({
+        faixa_credito_id: selectedRangeForAnticipations.id,
+        percentual: parseInt(newAnticipation.percentual),
+        valor_calculado: parseFloat(newAnticipation.valor_calculado),
+      });
+
+      await loadCommissionPlans();
+      setIsNewAnticipationDialogOpen(false);
+      setNewAnticipation({ percentual: "", valor_calculado: "" });
+      alert("Condição de antecipação criada com sucesso!");
+    } catch (error) {
+      console.error("Error creating anticipation condition:", error);
+      alert("Erro ao criar condição de antecipação. Tente novamente.");
+    }
+  };
+
+  const handleDeleteAnticipation = async (anticipationId) => {
+    const confirmDelete = window.confirm(
+      "Tem certeza que deseja excluir esta condição de antecipação?",
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await commissionPlansService.deleteAnticipationCondition(anticipationId);
+      await loadCommissionPlans();
+      alert("Condição de antecipação excluída com sucesso!");
+    } catch (error) {
+      console.error("Error deleting anticipation condition:", error);
+      alert("Erro ao excluir condição de antecipação. Tente novamente.");
     }
   };
 
@@ -3306,7 +3660,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="general-settings">Geral</TabsTrigger>
                     <TabsTrigger value="commission-tables">
-                      Tabelas de Comissão
+                      Planos de Comissão
                     </TabsTrigger>
                     <TabsTrigger value="payment-settings">
                       Pagamentos
@@ -3521,162 +3875,198 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between">
                         <div>
-                          <CardTitle>Tabelas de Comissão</CardTitle>
+                          <CardTitle>Planos de Comissão</CardTitle>
                           <CardDescription>
-                            Configure as tabelas de comissão disponíveis no
-                            sistema
+                            Configure os planos de financiamento e suas
+                            condições de comissão
                           </CardDescription>
                         </div>
                         <Dialog
-                          open={isNewTableDialogOpen}
-                          onOpenChange={setIsNewTableDialogOpen}
+                          open={isNewPlanDialogOpen}
+                          onOpenChange={setIsNewPlanDialogOpen}
                         >
                           <DialogTrigger asChild>
                             <Button className="bg-red-600 hover:bg-red-700">
                               <PlusCircle className="mr-2 h-4 w-4" />
-                              Nova Tabela
+                              Novo Plano
                             </Button>
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>
-                                Criar Nova Tabela de Comissão
+                                Criar Novo Plano de Comissão
                               </DialogTitle>
                               <DialogDescription>
-                                Configure uma nova tabela de comissão para os
-                                representantes.
+                                Configure um novo plano de financiamento com
+                                suas condições.
                               </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                               <div>
-                                <Label htmlFor="table-name">
-                                  Nome da Tabela
+                                <Label htmlFor="plan-name">
+                                  Nome do Plano *
                                 </Label>
                                 <Input
-                                  id="table-name"
-                                  value={newTable.name}
+                                  id="plan-name"
+                                  value={newPlan.nome}
                                   onChange={(e) =>
-                                    setNewTable({
-                                      ...newTable,
-                                      name: e.target.value,
+                                    setNewPlan({
+                                      ...newPlan,
+                                      nome: e.target.value,
                                     })
                                   }
-                                  placeholder="Ex: Tabela Premium"
+                                  placeholder="Ex: Plano A"
                                 />
                               </div>
                               <div>
-                                <Label htmlFor="table-percentage">
-                                  Percentual (%)
-                                </Label>
-                                <Input
-                                  id="table-percentage"
-                                  type="number"
-                                  value={newTable.percentage}
-                                  onChange={(e) =>
-                                    setNewTable({
-                                      ...newTable,
-                                      percentage: parseFloat(e.target.value),
-                                    })
-                                  }
-                                  placeholder="4"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="table-installments">
-                                  Parcelas
-                                </Label>
-                                <Input
-                                  id="table-installments"
-                                  type="number"
-                                  value={newTable.installments}
-                                  onChange={(e) =>
-                                    setNewTable({
-                                      ...newTable,
-                                      installments: parseInt(e.target.value),
-                                    })
-                                  }
-                                  placeholder="1"
-                                />
-                              </div>
-                              <div>
-                                <Label htmlFor="table-description">
+                                <Label htmlFor="plan-description">
                                   Descrição
                                 </Label>
                                 <Input
-                                  id="table-description"
-                                  value={newTable.description}
+                                  id="plan-description"
+                                  value={newPlan.descricao}
                                   onChange={(e) =>
-                                    setNewTable({
-                                      ...newTable,
-                                      description: e.target.value,
+                                    setNewPlan({
+                                      ...newPlan,
+                                      descricao: e.target.value,
                                     })
                                   }
-                                  placeholder="Descrição da tabela"
+                                  placeholder="Ex: Compra Programada 80X"
                                 />
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  id="plan-active"
+                                  checked={newPlan.ativo}
+                                  onChange={(e) =>
+                                    setNewPlan({
+                                      ...newPlan,
+                                      ativo: e.target.checked,
+                                    })
+                                  }
+                                />
+                                <Label htmlFor="plan-active">Plano ativo</Label>
                               </div>
                             </div>
                             <DialogFooter>
                               <Button
                                 variant="outline"
-                                onClick={() => setIsNewTableDialogOpen(false)}
+                                onClick={() => {
+                                  setIsNewPlanDialogOpen(false);
+                                  setNewPlan({
+                                    nome: "",
+                                    descricao: "",
+                                    ativo: true,
+                                  });
+                                }}
                               >
                                 Cancelar
                               </Button>
                               <Button
-                                onClick={handleCreateTable}
+                                onClick={handleCreatePlan}
                                 className="bg-red-600 hover:bg-red-700"
                               >
-                                Criar Tabela
+                                Criar Plano
                               </Button>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
                       </CardHeader>
                       <CardContent>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>ID</TableHead>
-                              <TableHead>Nome</TableHead>
-                              <TableHead>Percentual</TableHead>
-                              <TableHead>Parcelas</TableHead>
-                              <TableHead>Contratos Ativos</TableHead>
-                              <TableHead className="text-right">
-                                Ações
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {commissionTables.map((table) => (
-                              <TableRow key={table.id}>
-                                <TableCell className="font-medium">
-                                  {table.id}
-                                </TableCell>
-                                <TableCell>{table.name}</TableCell>
-                                <TableCell>{table.percentage}%</TableCell>
-                                <TableCell>{table.installments}x</TableCell>
-                                <TableCell>{table.activeContracts}</TableCell>
-                                <TableCell className="text-right">
-                                  <div className="flex gap-2 justify-end">
-                                    <Button variant="outline" size="sm">
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleDeleteTable(table.id)
-                                      }
-                                      disabled={table.activeContracts > 0}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
+                        {isLoadingPlans ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                          </div>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>ID</TableHead>
+                                <TableHead>Nome</TableHead>
+                                <TableHead>Descrição</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Faixas de Crédito</TableHead>
+                                <TableHead>Data de Criação</TableHead>
+                                <TableHead className="text-right">
+                                  Ações
+                                </TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                            </TableHeader>
+                            <TableBody>
+                              {commissionPlans.map((plan) => {
+                                const planRanges = creditRanges.filter(
+                                  (range) => range.plano_id === plan.id,
+                                );
+                                return (
+                                  <TableRow key={plan.id}>
+                                    <TableCell className="font-medium">
+                                      {plan.id}
+                                    </TableCell>
+                                    <TableCell>{plan.nome}</TableCell>
+                                    <TableCell>
+                                      {plan.descricao || "-"}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={
+                                          plan.ativo ? "default" : "secondary"
+                                        }
+                                      >
+                                        {plan.ativo ? "Ativo" : "Inativo"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>{planRanges.length}</TableCell>
+                                    <TableCell>
+                                      {new Date(
+                                        plan.data_criacao,
+                                      ).toLocaleDateString("pt-BR")}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <div className="flex gap-2 justify-end">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleManagePlan(plan)}
+                                          title="Gerenciar faixas e condições"
+                                        >
+                                          <Settings className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => handleEditPlan(plan)}
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            handleDeletePlan(plan.id)
+                                          }
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                              {commissionPlans.length === 0 && (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={7}
+                                    className="text-center py-8 text-muted-foreground"
+                                  >
+                                    Nenhum plano encontrado. Crie seu primeiro
+                                    plano de comissão.
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -4931,6 +5321,288 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </DialogContent>
         </Dialog>
+        {/* Edit Plan Dialog */}
+        <Dialog
+          open={isEditPlanDialogOpen}
+          onOpenChange={setIsEditPlanDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar Plano de Comissão</DialogTitle>
+              <DialogDescription>
+                Atualize as informações do plano de financiamento.
+              </DialogDescription>
+            </DialogHeader>
+            {editingPlan && (
+              <div className="grid gap-4 py-4">
+                <div>
+                  <Label htmlFor="edit-plan-name">Nome do Plano *</Label>
+                  <Input
+                    id="edit-plan-name"
+                    value={editingPlan.nome}
+                    onChange={(e) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        nome: e.target.value,
+                      })
+                    }
+                    placeholder="Ex: Plano A"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-plan-description">Descrição</Label>
+                  <Input
+                    id="edit-plan-description"
+                    value={editingPlan.descricao || ""}
+                    onChange={(e) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        descricao: e.target.value,
+                      })
+                    }
+                    placeholder="Ex: Compra Programada 80X"
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="edit-plan-active"
+                    checked={editingPlan.ativo}
+                    onChange={(e) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        ativo: e.target.checked,
+                      })
+                    }
+                  />
+                  <Label htmlFor="edit-plan-active">Plano ativo</Label>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditPlanDialogOpen(false);
+                  setEditingPlan(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUpdatePlan}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Atualizar Plano
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Plan Dialog */}
+        <Dialog
+          open={isManagePlanDialogOpen}
+          onOpenChange={setIsManagePlanDialogOpen}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Gerenciar Plano: {selectedPlan?.nome}</DialogTitle>
+              <DialogDescription>
+                Configure as faixas de crédito, condições de parcelas e
+                antecipação para este plano.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedPlan && (
+              <div className="space-y-6">
+                {/* Plan Info */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold mb-2">{selectedPlan.nome}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedPlan.descricao}
+                  </p>
+                  <Badge
+                    variant={selectedPlan.ativo ? "default" : "secondary"}
+                    className="mt-2"
+                  >
+                    {selectedPlan.ativo ? "Ativo" : "Inativo"}
+                  </Badge>
+                </div>
+
+                {/* Credit Ranges */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold">Faixas de Crédito</h4>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsNewCreditRangeDialogOpen(true)}
+                    >
+                      <PlusCircle className="h-4 w-4 mr-2" />
+                      Adicionar Faixa
+                    </Button>
+                  </div>
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Valor do Crédito</TableHead>
+                          <TableHead>Valor Restante</TableHead>
+                          <TableHead>Parcelas</TableHead>
+                          <TableHead>Antecipações</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {creditRanges
+                          .filter((range) => range.plano_id === selectedPlan.id)
+                          .map((range) => {
+                            const rangeInstallments =
+                              installmentConditions.filter(
+                                (inst) => inst.faixa_credito_id === range.id,
+                              );
+                            const rangeAnticipations =
+                              anticipationConditions.filter(
+                                (ant) => ant.faixa_credito_id === range.id,
+                              );
+                            return (
+                              <TableRow key={range.id}>
+                                <TableCell className="font-medium">
+                                  {new Intl.NumberFormat("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  }).format(range.valor_credito)}
+                                </TableCell>
+                                <TableCell>
+                                  {new Intl.NumberFormat("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  }).format(range.valor_restante)}
+                                </TableCell>
+                                <TableCell>
+                                  {rangeInstallments.length}
+                                </TableCell>
+                                <TableCell>
+                                  {rangeAnticipations.length}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex gap-2 justify-end">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleManageInstallments(range)
+                                      }
+                                      title="Gerenciar Parcelas"
+                                    >
+                                      <Hash className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleManageAnticipations(range)
+                                      }
+                                      title="Gerenciar Antecipações"
+                                    >
+                                      <Clock className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() =>
+                                        handleDeleteCreditRange(range.id)
+                                      }
+                                      className="text-red-600 hover:text-red-700"
+                                      title="Excluir Faixa"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        {creditRanges.filter(
+                          (range) => range.plano_id === selectedPlan.id,
+                        ).length === 0 && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={5}
+                              className="text-center py-8 text-muted-foreground"
+                            >
+                              Nenhuma faixa de crédito configurada para este
+                              plano.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="p-4 border rounded-lg text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {
+                        creditRanges.filter(
+                          (range) => range.plano_id === selectedPlan.id,
+                        ).length
+                      }
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Faixas de Crédito
+                    </div>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {
+                        installmentConditions.filter((inst) =>
+                          creditRanges.some(
+                            (range) =>
+                              range.plano_id === selectedPlan.id &&
+                              range.id === inst.faixa_credito_id,
+                          ),
+                        ).length
+                      }
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Condições de Parcelas
+                    </div>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {
+                        anticipationConditions.filter((ant) =>
+                          creditRanges.some(
+                            (range) =>
+                              range.plano_id === selectedPlan.id &&
+                              range.id === ant.faixa_credito_id,
+                          ),
+                        ).length
+                      }
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Condições de Antecipação
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsManagePlanDialogOpen(false);
+                  setSelectedPlan(null);
+                }}
+              >
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Status Change Confirmation Dialog */}
         <AlertDialog
           open={isStatusChangeDialogOpen}
@@ -4982,6 +5654,437 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* New Credit Range Dialog */}
+        <Dialog
+          open={isNewCreditRangeDialogOpen}
+          onOpenChange={setIsNewCreditRangeDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Adicionar Faixa de Crédito</DialogTitle>
+              <DialogDescription>
+                Configure uma nova faixa de crédito para o plano{" "}
+                {selectedPlan?.nome}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="credit-value">Valor do Crédito *</Label>
+                <Input
+                  id="credit-value"
+                  type="number"
+                  step="0.01"
+                  value={newCreditRange.valor_credito}
+                  onChange={(e) =>
+                    setNewCreditRange({
+                      ...newCreditRange,
+                      valor_credito: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 20000.00"
+                />
+              </div>
+              <div>
+                <Label htmlFor="first-installment-value">
+                  Valor da Primeira Parcela *
+                </Label>
+                <Input
+                  id="first-installment-value"
+                  type="number"
+                  step="0.01"
+                  value={newCreditRange.valor_primeira_parcela}
+                  onChange={(e) =>
+                    setNewCreditRange({
+                      ...newCreditRange,
+                      valor_primeira_parcela: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 2000.00"
+                />
+              </div>
+              <div>
+                <Label htmlFor="remaining-installments-value">
+                  Valor das Parcelas Restantes *
+                </Label>
+                <Input
+                  id="remaining-installments-value"
+                  type="number"
+                  step="0.01"
+                  value={newCreditRange.valor_parcelas_restantes}
+                  onChange={(e) =>
+                    setNewCreditRange({
+                      ...newCreditRange,
+                      valor_parcelas_restantes: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 250.00"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsNewCreditRangeDialogOpen(false);
+                  setNewCreditRange({
+                    valor_credito: "",
+                    valor_primeira_parcela: "",
+                    valor_parcelas_restantes: "",
+                  });
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateCreditRange}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Criar Faixa
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Installments Dialog */}
+        <Dialog
+          open={isManageInstallmentsDialogOpen}
+          onOpenChange={setIsManageInstallmentsDialogOpen}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Gerenciar Parcelas</DialogTitle>
+              <DialogDescription>
+                Configure as condições de parcelas para a faixa de crédito de{" "}
+                {selectedRangeForInstallments &&
+                  new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(selectedRangeForInstallments.valor_credito)}
+                .
+              </DialogDescription>
+            </DialogHeader>
+            {selectedRangeForInstallments && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Condições de Parcelas</h4>
+                  <Button
+                    size="sm"
+                    onClick={() => setIsNewInstallmentDialogOpen(true)}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Adicionar Parcela
+                  </Button>
+                </div>
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Número da Parcela</TableHead>
+                        <TableHead>Valor da Parcela</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {installmentConditions
+                        .filter(
+                          (inst) =>
+                            inst.faixa_credito_id ===
+                            selectedRangeForInstallments.id,
+                        )
+                        .sort((a, b) => a.numero_parcela - b.numero_parcela)
+                        .map((installment) => (
+                          <TableRow key={installment.id}>
+                            <TableCell className="font-medium">
+                              {installment.numero_parcela}ª parcela
+                            </TableCell>
+                            <TableCell>
+                              {new Intl.NumberFormat("pt-BR", {
+                                style: "currency",
+                                currency: "BRL",
+                              }).format(installment.valor_parcela)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteInstallment(installment.id)
+                                }
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      {installmentConditions.filter(
+                        (inst) =>
+                          inst.faixa_credito_id ===
+                          selectedRangeForInstallments.id,
+                      ).length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={3}
+                            className="text-center py-8 text-muted-foreground"
+                          >
+                            Nenhuma condição de parcela configurada.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsManageInstallmentsDialogOpen(false);
+                  setSelectedRangeForInstallments(null);
+                }}
+              >
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* New Installment Dialog */}
+        <Dialog
+          open={isNewInstallmentDialogOpen}
+          onOpenChange={setIsNewInstallmentDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Adicionar Condição de Parcela</DialogTitle>
+              <DialogDescription>
+                Configure uma nova condição de parcela.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="installment-number">Número da Parcela *</Label>
+                <Input
+                  id="installment-number"
+                  type="number"
+                  value={newInstallment.numero_parcela}
+                  onChange={(e) =>
+                    setNewInstallment({
+                      ...newInstallment,
+                      numero_parcela: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="installment-value">Valor da Parcela *</Label>
+                <Input
+                  id="installment-value"
+                  type="number"
+                  step="0.01"
+                  value={newInstallment.valor_parcela}
+                  onChange={(e) =>
+                    setNewInstallment({
+                      ...newInstallment,
+                      valor_parcela: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 2000.00"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsNewInstallmentDialogOpen(false);
+                  setNewInstallment({ numero_parcela: "", valor_parcela: "" });
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateInstallment}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Criar Parcela
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Anticipations Dialog */}
+        <Dialog
+          open={isManageAnticipationsDialogOpen}
+          onOpenChange={setIsManageAnticipationsDialogOpen}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Gerenciar Antecipações</DialogTitle>
+              <DialogDescription>
+                Configure as condições de antecipação para a faixa de crédito de{" "}
+                {selectedRangeForAnticipations &&
+                  new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(selectedRangeForAnticipations.valor_credito)}
+                .
+              </DialogDescription>
+            </DialogHeader>
+            {selectedRangeForAnticipations && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Condições de Antecipação</h4>
+                  <Button
+                    size="sm"
+                    onClick={() => setIsNewAnticipationDialogOpen(true)}
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Adicionar Antecipação
+                  </Button>
+                </div>
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Percentual</TableHead>
+                        <TableHead>Valor Calculado</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {anticipationConditions
+                        .filter(
+                          (ant) =>
+                            ant.faixa_credito_id ===
+                            selectedRangeForAnticipations.id,
+                        )
+                        .sort((a, b) => a.percentual - b.percentual)
+                        .map((anticipation) => (
+                          <TableRow key={anticipation.id}>
+                            <TableCell className="font-medium">
+                              {anticipation.percentual}%
+                            </TableCell>
+                            <TableCell>
+                              {new Intl.NumberFormat("pt-BR", {
+                                style: "currency",
+                                currency: "BRL",
+                              }).format(anticipation.valor_calculado)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteAnticipation(anticipation.id)
+                                }
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      {anticipationConditions.filter(
+                        (ant) =>
+                          ant.faixa_credito_id ===
+                          selectedRangeForAnticipations.id,
+                      ).length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={3}
+                            className="text-center py-8 text-muted-foreground"
+                          >
+                            Nenhuma condição de antecipação configurada.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsManageAnticipationsDialogOpen(false);
+                  setSelectedRangeForAnticipations(null);
+                }}
+              >
+                Fechar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* New Anticipation Dialog */}
+        <Dialog
+          open={isNewAnticipationDialogOpen}
+          onOpenChange={setIsNewAnticipationDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Adicionar Condição de Antecipação</DialogTitle>
+              <DialogDescription>
+                Configure uma nova condição de antecipação.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div>
+                <Label htmlFor="anticipation-percentage">Percentual *</Label>
+                <Input
+                  id="anticipation-percentage"
+                  type="number"
+                  value={newAnticipation.percentual}
+                  onChange={(e) =>
+                    setNewAnticipation({
+                      ...newAnticipation,
+                      percentual: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 20"
+                />
+              </div>
+              <div>
+                <Label htmlFor="anticipation-value">Valor Calculado *</Label>
+                <Input
+                  id="anticipation-value"
+                  type="number"
+                  step="0.01"
+                  value={newAnticipation.valor_calculado}
+                  onChange={(e) =>
+                    setNewAnticipation({
+                      ...newAnticipation,
+                      valor_calculado: e.target.value,
+                    })
+                  }
+                  placeholder="Ex: 4000.00"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsNewAnticipationDialogOpen(false);
+                  setNewAnticipation({ percentual: "", valor_calculado: "" });
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateAnticipation}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Criar Antecipação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Form>
   );

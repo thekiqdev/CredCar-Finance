@@ -23,11 +23,20 @@ import { Editor } from "@tinymce/tinymce-react";
 import { contractTemplateService } from "../../lib/supabase";
 import SignatureCanvas from "@/components/ui/signature-canvas";
 
-interface CommissionTable {
+interface CommissionPlan {
   id: number;
-  name: string;
-  commission_percentage: number;
-  payment_details: string;
+  nome: string;
+  descricao: string;
+  ativo: boolean;
+}
+
+interface CreditRange {
+  id: number;
+  plano_id: number;
+  valor_credito: number;
+  valor_primeira_parcela: number;
+  valor_parcelas_restantes: number;
+  numero_total_parcelas: number;
 }
 
 interface Group {
@@ -52,7 +61,8 @@ interface ClientData {
 }
 
 interface ContractContentEditorProps {
-  selectedTable: CommissionTable;
+  selectedPlan: CommissionPlan;
+  selectedCreditRange: CreditRange;
   selectedQuota: Quota;
   selectedGroup: Group;
   clientData: ClientData;
@@ -61,7 +71,8 @@ interface ContractContentEditorProps {
 }
 
 const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
-  selectedTable,
+  selectedPlan,
+  selectedCreditRange,
   selectedQuota,
   selectedGroup,
   clientData,
@@ -102,10 +113,15 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
 <p><strong>Descrição:</strong> ${selectedGroup.description}</p>
 <p><strong>Cota:</strong> ${selectedQuota.quota_number}</p>
 
-<h2>TABELA DE COMISSÃO</h2>
-<p><strong>Tabela:</strong> ${selectedTable.name}</p>
-<p><strong>Percentual de Comissão:</strong> ${selectedTable.commission_percentage}%</p>
-<p><strong>Detalhes de Pagamento:</strong> ${selectedTable.payment_details}</p>
+<h2>PLANO DE COMISSÃO</h2>
+<p><strong>Plano:</strong> ${selectedPlan.nome}</p>
+<p><strong>Descrição:</strong> ${selectedPlan.descricao}</p>
+
+<h2>VALOR DO CRÉDITO</h2>
+<p><strong>Valor do Crédito:</strong> R$ ${selectedCreditRange.valor_credito.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+<p><strong>Primeira Parcela:</strong> R$ ${selectedCreditRange.valor_primeira_parcela.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+<p><strong>Parcelas Restantes:</strong> R$ ${selectedCreditRange.valor_parcelas_restantes.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+<p><strong>Total de Parcelas:</strong> ${selectedCreditRange.numero_total_parcelas}</p>
 
 <h2>TERMOS E CONDIÇÕES</h2>
 <p>Este contrato estabelece os termos e condições para participação no consórcio...</p>
@@ -338,15 +354,35 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
           selectedQuota.quota_number.toString(),
         );
 
-        // Replace commission table variables
-        content = content.replace(/{{TABELA_NOME}}/g, selectedTable.name);
+        // Replace commission plan variables
+        content = content.replace(/{{PLANO_NOME}}/g, selectedPlan.nome);
         content = content.replace(
-          /{{TABELA_PERCENTUAL}}/g,
-          selectedTable.commission_percentage.toString(),
+          /{{PLANO_DESCRICAO}}/g,
+          selectedPlan.descricao,
+        );
+
+        // Replace credit range variables
+        content = content.replace(
+          /{{VALOR_CREDITO}}/g,
+          selectedCreditRange.valor_credito.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          }),
         );
         content = content.replace(
-          /{{TABELA_DETALHES}}/g,
-          selectedTable.payment_details,
+          /{{PRIMEIRA_PARCELA}}/g,
+          selectedCreditRange.valor_primeira_parcela.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          }),
+        );
+        content = content.replace(
+          /{{PARCELAS_RESTANTES}}/g,
+          selectedCreditRange.valor_parcelas_restantes.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          }),
+        );
+        content = content.replace(
+          /{{TOTAL_PARCELAS}}/g,
+          selectedCreditRange.numero_total_parcelas.toString(),
         );
 
         // Replace date variables
@@ -464,10 +500,10 @@ const ContractContentEditor: React.FC<ContractContentEditorProps> = ({
               </div>
               <div>
                 <span className="text-sm font-medium text-gray-500">
-                  Comissão:
+                  Plano:
                 </span>
                 <span className="ml-2 text-sm text-gray-900">
-                  {selectedTable.name} ({selectedTable.commission_percentage}%)
+                  {selectedPlan.nome}
                 </span>
               </div>
             </div>
