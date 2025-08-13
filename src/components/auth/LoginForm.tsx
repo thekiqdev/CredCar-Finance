@@ -33,32 +33,116 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
 
     try {
       // First, check if it's an admin login
-      if (email === "admin@credicar.com" && password === "admin123") {
-        console.log("Admin login detected");
-        // Set a simple admin user object
-        const adminUser = {
-          id: "admin",
-          name: "Administrador",
-          full_name: "Administrador",
-          email: "admin@credicar.com",
-          role: "Administrador",
-          status: "Ativo" as const,
-          phone: "",
-          cnpj: "",
-          company_name: "",
-          razao_social: "",
-          point_of_sale: "",
-          ponto_venda: "",
-          commission_code: "",
-          total_sales: 0,
-          contracts_count: 0,
-          created_at: new Date().toISOString(),
-        };
+      if (email === "admin@credicar.com") {
+        console.log("Admin login detected, verifying password...");
+        console.log("Entered password:", password);
 
-        authService.setCurrentUser(adminUser);
-        onLogin(email, password, "admin");
-        navigate("/admindashboard");
-        return;
+        // Import administratorService for password verification
+        const { administratorService } = await import("../../lib/supabase");
+        const isValidPassword = await administratorService.verifyPassword(
+          "admin",
+          password,
+        );
+
+        console.log("Password verification result:", isValidPassword);
+
+        if (isValidPassword) {
+          console.log("Admin password verified successfully");
+          // Set a simple admin user object
+          const adminUser = {
+            id: "admin",
+            name: "Administrador",
+            full_name: "Administrador",
+            email: "admin@credicar.com",
+            role: "Administrador",
+            status: "Ativo" as const,
+            phone: "",
+            cnpj: "",
+            company_name: "",
+            razao_social: "",
+            point_of_sale: "",
+            ponto_venda: "",
+            commission_code: "",
+            total_sales: 0,
+            contracts_count: 0,
+            created_at: new Date().toISOString(),
+          };
+
+          authService.setCurrentUser(adminUser);
+          onLogin(email, password, "admin");
+          navigate("/admindashboard");
+          return;
+        } else {
+          console.log("Admin password verification failed");
+          setError(
+            "Email ou senha incorretos. Verifique suas credenciais e tente novamente.",
+          );
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Check if it's a login for other administrators
+      try {
+        const { administratorService } = await import("../../lib/supabase");
+        const administrator = await administratorService.getByEmail(email);
+
+        if (administrator) {
+          console.log("Administrator found:", administrator.full_name);
+          console.log(
+            "Verifying password for administrator ID:",
+            administrator.id,
+          );
+
+          const isValidPassword = await administratorService.verifyPassword(
+            administrator.id,
+            password,
+          );
+
+          console.log(
+            "Administrator password verification result:",
+            isValidPassword,
+          );
+
+          if (isValidPassword) {
+            console.log("Administrator password verified successfully");
+            // Set admin user object
+            const adminUser = {
+              id: administrator.id,
+              name: administrator.full_name,
+              full_name: administrator.full_name,
+              email: administrator.email,
+              role: administrator.role,
+              status: administrator.status as const,
+              phone: administrator.phone || "",
+              cnpj: "",
+              company_name: "",
+              razao_social: "",
+              point_of_sale: "",
+              ponto_venda: "",
+              commission_code: "",
+              total_sales: 0,
+              contracts_count: 0,
+              created_at: administrator.created_at,
+            };
+
+            authService.setCurrentUser(adminUser);
+            onLogin(email, password, "admin");
+            navigate("/admindashboard");
+            return;
+          } else {
+            console.log("Administrator password verification failed");
+            setError(
+              "Email ou senha incorretos. Verifique suas credenciais e tente novamente.",
+            );
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (adminError) {
+        console.log(
+          "No administrator found with this email, trying representative login",
+        );
       }
 
       // Try to authenticate as representative

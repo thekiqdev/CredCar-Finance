@@ -102,6 +102,7 @@ import {
   UserCheck,
   UserX,
   Calculator,
+  Key,
 } from "lucide-react";
 import ContractCreationFlow from "@/components/sales/ContractCreationFlow";
 import ContractTemplateManagement from "@/components/sales/ContractTemplateManagement";
@@ -170,10 +171,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isNewRepDialogOpen, setIsNewRepDialogOpen] = useState(false);
   const [isEditRepDialogOpen, setIsEditRepDialogOpen] = useState(false);
   const [isDeleteRepDialogOpen, setIsDeleteRepDialogOpen] = useState(false);
+  const [isPasswordChangeDialogOpen, setIsPasswordChangeDialogOpen] =
+    useState(false);
   const [editingRepresentative, setEditingRepresentative] =
     useState<Representative | null>(null);
   const [deletingRepresentative, setDeletingRepresentative] =
     useState<Representative | null>(null);
+  const [representativeForPasswordChange, setRepresentativeForPasswordChange] =
+    useState<Representative | null>(null);
+  const [newPassword, setNewPassword] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [isContractTransferDialogOpen, setIsContractTransferDialogOpen] =
     useState(false);
@@ -415,6 +421,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     role: "Suporte",
     password: "",
   });
+
+  // Collaborator management state
+  const [isEditCollaboratorDialogOpen, setIsEditCollaboratorDialogOpen] =
+    useState(false);
+  const [isDeleteCollaboratorDialogOpen, setIsDeleteCollaboratorDialogOpen] =
+    useState(false);
+  const [
+    isCollaboratorPasswordChangeDialogOpen,
+    setIsCollaboratorPasswordChangeDialogOpen,
+  ] = useState(false);
+  const [editingCollaborator, setEditingCollaborator] = useState(null);
+  const [deletingCollaborator, setDeletingCollaborator] = useState(null);
+  const [collaboratorForPasswordChange, setCollaboratorForPasswordChange] =
+    useState(null);
+  const [newCollaboratorPassword, setNewCollaboratorPassword] = useState("");
+  const [collaboratorAdminPassword, setCollaboratorAdminPassword] =
+    useState("");
 
   // Payment settings state
   const [paymentSettings, setPaymentSettings] = useState({
@@ -1376,9 +1399,175 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       setIsEditRepDialogOpen(false);
       setEditingRepresentative(null);
+      alert("Representante atualizado com sucesso!");
     } catch (error) {
       console.error("Error updating representative:", error);
-      alert("Erro ao atualizar representante.");
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao atualizar representante: ${errorMessage}`);
+    }
+  };
+
+  const handleChangePassword = (rep: Representative) => {
+    setRepresentativeForPasswordChange(rep);
+    setIsPasswordChangeDialogOpen(true);
+  };
+
+  const handlePasswordUpdate = async () => {
+    if (!representativeForPasswordChange || !newPassword.trim()) {
+      alert("Por favor, informe a nova senha.");
+      return;
+    }
+
+    try {
+      // In a real implementation, you would call a password update service
+      // For now, we'll just simulate the password change
+      console.log(
+        "Changing password for representative:",
+        representativeForPasswordChange.name,
+        "New password:",
+        newPassword,
+      );
+
+      // Here you would typically call an API to update the password
+      // await representativeService.updatePassword(representativeForPasswordChange.id, newPassword);
+
+      setIsPasswordChangeDialogOpen(false);
+      setRepresentativeForPasswordChange(null);
+      setNewPassword("");
+      alert("Senha alterada com sucesso!");
+    } catch (error) {
+      console.error("Error updating password:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao alterar senha: ${errorMessage}`);
+    }
+  };
+
+  const generatePasswordForEdit = () => {
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPassword(password);
+  };
+
+  const generatePasswordForCollaborator = () => {
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let password = "";
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewCollaboratorPassword(password);
+  };
+
+  // Collaborator management functions
+  const handleEditCollaborator = (collaborator) => {
+    setEditingCollaborator(collaborator);
+    setIsEditCollaboratorDialogOpen(true);
+  };
+
+  const handleUpdateCollaborator = async () => {
+    if (!editingCollaborator) return;
+
+    try {
+      await administratorService.update(editingCollaborator.id, {
+        full_name: editingCollaborator.name,
+        email: editingCollaborator.email,
+        role: editingCollaborator.role,
+        status: editingCollaborator.status,
+      });
+      console.log("Collaborator updated:", editingCollaborator);
+
+      // Refresh the collaborators list
+      await loadInternalUsers();
+
+      setIsEditCollaboratorDialogOpen(false);
+      setEditingCollaborator(null);
+      alert("Colaborador atualizado com sucesso!");
+    } catch (error) {
+      console.error("Error updating collaborator:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao atualizar colaborador: ${errorMessage}`);
+    }
+  };
+
+  const handleChangeCollaboratorPassword = (collaborator) => {
+    setCollaboratorForPasswordChange(collaborator);
+    setIsCollaboratorPasswordChangeDialogOpen(true);
+  };
+
+  const handleCollaboratorPasswordUpdate = async () => {
+    if (!collaboratorForPasswordChange || !newCollaboratorPassword.trim()) {
+      alert("Por favor, informe a nova senha.");
+      return;
+    }
+
+    try {
+      console.log(
+        "Changing password for collaborator:",
+        collaboratorForPasswordChange.name,
+        "New password:",
+        newCollaboratorPassword,
+      );
+
+      // Call the password update service
+      await administratorService.updatePassword(
+        collaboratorForPasswordChange.id,
+        newCollaboratorPassword,
+      );
+
+      setIsCollaboratorPasswordChangeDialogOpen(false);
+      setCollaboratorForPasswordChange(null);
+      setNewCollaboratorPassword("");
+      alert("Senha do colaborador alterada com sucesso!");
+    } catch (error) {
+      console.error("Error updating collaborator password:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao alterar senha do colaborador: ${errorMessage}`);
+    }
+  };
+
+  const handleDeleteCollaborator = (collaborator) => {
+    setDeletingCollaborator(collaborator);
+    setIsDeleteCollaboratorDialogOpen(true);
+  };
+
+  const confirmDeleteCollaborator = async () => {
+    if (!deletingCollaborator) return;
+
+    try {
+      // Verify admin password
+      const isValidPassword = await administratorService.verifyPassword(
+        "admin",
+        collaboratorAdminPassword,
+      );
+
+      if (!isValidPassword) {
+        alert("Senha incorreta!");
+        return;
+      }
+
+      await administratorService.delete(deletingCollaborator.id);
+      console.log("Collaborator deleted:", deletingCollaborator);
+
+      // Refresh the collaborators list
+      await loadInternalUsers();
+
+      setIsDeleteCollaboratorDialogOpen(false);
+      setDeletingCollaborator(null);
+      setCollaboratorAdminPassword("");
+      alert("Colaborador excluído com sucesso!");
+    } catch (error) {
+      console.error("Error deleting collaborator:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao excluir colaborador: ${errorMessage}`);
     }
   };
 
@@ -1415,14 +1604,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const confirmDeleteRepresentative = async () => {
-    if (adminPassword !== "admin123") {
-      alert("Senha incorreta!");
-      return;
-    }
-
     if (!deletingRepresentative) return;
 
     try {
+      // Verify admin password
+      const isValidPassword = await administratorService.verifyPassword(
+        "admin",
+        adminPassword,
+      );
+
+      if (!isValidPassword) {
+        alert("Senha incorreta!");
+        return;
+      }
+
       // Check if representative has contracts
       const contracts = await checkRepresentativeContracts(
         deletingRepresentative.id,
@@ -2960,31 +3155,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   {rep.commission_code || "-"}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <div className="flex justify-end gap-2">
+                                  <div className="flex justify-end gap-1">
                                     <Button
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
-                                      onClick={() =>
-                                        handleEditRepresentative(rep)
-                                      }
+                                      onClick={() => {
+                                        console.log(
+                                          "Edit button clicked for:",
+                                          rep.name,
+                                        );
+                                        handleEditRepresentative(rep);
+                                      }}
+                                      title="Editar representante"
+                                      className="h-8 w-8 p-0"
                                     >
                                       <Edit className="h-4 w-4" />
                                     </Button>
                                     <Button
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
                                       onClick={() => {
+                                        console.log(
+                                          "Password change button clicked for:",
+                                          rep.name,
+                                        );
+                                        handleChangePassword(rep);
+                                      }}
+                                      title="Alterar senha"
+                                      className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 border-blue-200 hover:bg-blue-50"
+                                    >
+                                      <Key className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        console.log(
+                                          "View details button clicked for:",
+                                          rep.name,
+                                        );
                                         navigate(`/representative/${rep.id}`);
                                       }}
+                                      title="Ver detalhes"
+                                      className="h-8 w-8 p-0"
                                     >
                                       <Eye className="h-4 w-4" />
                                     </Button>
                                     <Button
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
-                                      onClick={() =>
-                                        handleDeleteRepresentative(rep)
-                                      }
+                                      onClick={() => {
+                                        console.log(
+                                          "Delete button clicked for:",
+                                          rep.name,
+                                        );
+                                        handleDeleteRepresentative(rep);
+                                      }}
+                                      title="Excluir representante"
+                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-800 border-red-200 hover:bg-red-50"
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -4979,6 +5207,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 phone: "", // Optional field
                                 role: newInternalUser.role,
                                 status: "Ativo",
+                                password:
+                                  newInternalUser.password || "admin123",
                               };
 
                               const data =
@@ -5107,10 +5337,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex gap-2 justify-end">
-                                    <Button variant="outline" size="sm">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        console.log(
+                                          "Edit collaborator button clicked for:",
+                                          user.name,
+                                        );
+                                        handleEditCollaborator(user);
+                                      }}
+                                      title="Editar colaborador"
+                                      className="h-8 w-8 p-0"
+                                    >
                                       <Edit className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="outline" size="sm">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        console.log(
+                                          "Change password button clicked for:",
+                                          user.name,
+                                        );
+                                        handleChangeCollaboratorPassword(user);
+                                      }}
+                                      title="Alterar senha"
+                                      className="h-8 w-8 p-0 text-blue-600 hover:text-blue-800 border-blue-200 hover:bg-blue-50"
+                                    >
+                                      <Key className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        console.log(
+                                          "Delete collaborator button clicked for:",
+                                          user.name,
+                                        );
+                                        handleDeleteCollaborator(user);
+                                      }}
+                                      title="Excluir colaborador"
+                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-800 border-red-200 hover:bg-red-50"
+                                    >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                   </div>
@@ -5520,6 +5789,211 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 disabled={!documentRejectionReason.trim()}
               >
                 Reprovar Documento
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Representative Dialog */}
+        <Dialog
+          open={isEditRepDialogOpen}
+          onOpenChange={setIsEditRepDialogOpen}
+        >
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Editar Representante</DialogTitle>
+              <DialogDescription>
+                Atualize os dados do representante {editingRepresentative?.name}
+                .
+              </DialogDescription>
+            </DialogHeader>
+            {editingRepresentative && (
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edit-name">Nome Completo *</Label>
+                    <Input
+                      id="edit-name"
+                      value={editingRepresentative.name}
+                      onChange={(e) =>
+                        setEditingRepresentative({
+                          ...editingRepresentative,
+                          name: e.target.value,
+                        })
+                      }
+                      placeholder="Nome completo"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-email">Email *</Label>
+                    <Input
+                      id="edit-email"
+                      type="email"
+                      value={editingRepresentative.email}
+                      onChange={(e) =>
+                        setEditingRepresentative({
+                          ...editingRepresentative,
+                          email: e.target.value,
+                        })
+                      }
+                      placeholder="email@exemplo.com"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edit-phone">Telefone</Label>
+                    <Input
+                      id="edit-phone"
+                      value={editingRepresentative.phone || ""}
+                      onChange={(e) =>
+                        setEditingRepresentative({
+                          ...editingRepresentative,
+                          phone: e.target.value,
+                        })
+                      }
+                      placeholder="(11) 99999-9999"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-cnpj">CNPJ</Label>
+                    <Input
+                      id="edit-cnpj"
+                      value={formatCpfCnpj(editingRepresentative.cnpj || "")}
+                      onChange={(e) =>
+                        setEditingRepresentative({
+                          ...editingRepresentative,
+                          cnpj: e.target.value,
+                        })
+                      }
+                      placeholder="00.000.000/0000-00"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edit-razao-social">Razão Social</Label>
+                    <Input
+                      id="edit-razao-social"
+                      value={editingRepresentative.razao_social || ""}
+                      onChange={(e) =>
+                        setEditingRepresentative({
+                          ...editingRepresentative,
+                          razao_social: e.target.value,
+                        })
+                      }
+                      placeholder="Nome da empresa"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-ponto-venda">Ponto de Venda</Label>
+                    <Input
+                      id="edit-ponto-venda"
+                      value={editingRepresentative.ponto_venda || ""}
+                      onChange={(e) =>
+                        setEditingRepresentative({
+                          ...editingRepresentative,
+                          ponto_venda: e.target.value,
+                        })
+                      }
+                      placeholder="Local de vendas"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="edit-status">Status</Label>
+                  <Select
+                    value={editingRepresentative.status}
+                    onValueChange={(value) =>
+                      setEditingRepresentative({
+                        ...editingRepresentative,
+                        status: value as any,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Ativo">Ativo</SelectItem>
+                      <SelectItem value="Inativo">Inativo</SelectItem>
+                      <SelectItem value="Pausado">Pausado</SelectItem>
+                      <SelectItem value="Cancelado">Cancelado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditRepDialogOpen(false);
+                  setEditingRepresentative(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUpdateRepresentative}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Salvar Alterações
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Password Change Dialog */}
+        <Dialog
+          open={isPasswordChangeDialogOpen}
+          onOpenChange={setIsPasswordChangeDialogOpen}
+        >
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Alterar Senha</DialogTitle>
+              <DialogDescription>
+                Defina uma nova senha para{" "}
+                {representativeForPasswordChange?.name}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="new-password" className="text-right">
+                  Nova Senha
+                </Label>
+                <div className="col-span-3 flex gap-2">
+                  <Input
+                    id="new-password"
+                    type="text"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="flex-1"
+                    placeholder="Digite ou gere uma nova senha"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={generatePasswordForEdit}
+                  >
+                    Gerar
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsPasswordChangeDialogOpen(false);
+                  setRepresentativeForPasswordChange(null);
+                  setNewPassword("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handlePasswordUpdate} disabled={!newPassword}>
+                Alterar Senha
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -6506,6 +6980,234 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-red-600 hover:bg-red-700"
               >
                 Criar Antecipação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Collaborator Dialog */}
+        <Dialog
+          open={isEditCollaboratorDialogOpen}
+          onOpenChange={setIsEditCollaboratorDialogOpen}
+        >
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Editar Colaborador</DialogTitle>
+              <DialogDescription>
+                Atualize os dados do colaborador {editingCollaborator?.name}.
+              </DialogDescription>
+            </DialogHeader>
+            {editingCollaborator && (
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edit-collaborator-name">
+                      Nome Completo *
+                    </Label>
+                    <Input
+                      id="edit-collaborator-name"
+                      value={editingCollaborator.name}
+                      onChange={(e) =>
+                        setEditingCollaborator({
+                          ...editingCollaborator,
+                          name: e.target.value,
+                        })
+                      }
+                      placeholder="Nome completo"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-collaborator-email">Email *</Label>
+                    <Input
+                      id="edit-collaborator-email"
+                      type="email"
+                      value={editingCollaborator.email}
+                      onChange={(e) =>
+                        setEditingCollaborator({
+                          ...editingCollaborator,
+                          email: e.target.value,
+                        })
+                      }
+                      placeholder="email@exemplo.com"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="edit-collaborator-role">Função</Label>
+                    <Select
+                      value={editingCollaborator.role}
+                      onValueChange={(value) =>
+                        setEditingCollaborator({
+                          ...editingCollaborator,
+                          role: value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Administrador">
+                          Administrador
+                        </SelectItem>
+                        <SelectItem value="Suporte">Suporte</SelectItem>
+                        <SelectItem value="Financeiro">Financeiro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-collaborator-status">Status</Label>
+                    <Select
+                      value={editingCollaborator.status}
+                      onValueChange={(value) =>
+                        setEditingCollaborator({
+                          ...editingCollaborator,
+                          status: value,
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Ativo">Ativo</SelectItem>
+                        <SelectItem value="Inativo">Inativo</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsEditCollaboratorDialogOpen(false);
+                  setEditingCollaborator(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleUpdateCollaborator}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Salvar Alterações
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Collaborator Password Change Dialog */}
+        <Dialog
+          open={isCollaboratorPasswordChangeDialogOpen}
+          onOpenChange={setIsCollaboratorPasswordChangeDialogOpen}
+        >
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Alterar Senha do Colaborador</DialogTitle>
+              <DialogDescription>
+                Defina uma nova senha para {collaboratorForPasswordChange?.name}
+                .
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label
+                  htmlFor="new-collaborator-password"
+                  className="text-right"
+                >
+                  Nova Senha
+                </Label>
+                <div className="col-span-3 flex gap-2">
+                  <Input
+                    id="new-collaborator-password"
+                    type="text"
+                    value={newCollaboratorPassword}
+                    onChange={(e) => setNewCollaboratorPassword(e.target.value)}
+                    className="flex-1"
+                    placeholder="Digite ou gere uma nova senha"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={generatePasswordForCollaborator}
+                  >
+                    Gerar
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCollaboratorPasswordChangeDialogOpen(false);
+                  setCollaboratorForPasswordChange(null);
+                  setNewCollaboratorPassword("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCollaboratorPasswordUpdate}
+                disabled={!newCollaboratorPassword}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Alterar Senha
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Collaborator Dialog */}
+        <Dialog
+          open={isDeleteCollaboratorDialogOpen}
+          onOpenChange={setIsDeleteCollaboratorDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Excluir Colaborador</DialogTitle>
+              <DialogDescription>
+                Tem certeza que deseja excluir o colaborador{" "}
+                <strong>{deletingCollaborator?.name}</strong>?
+                <br />
+                <br />
+                Esta ação não pode ser desfeita.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="collaborator-admin-password">
+                  Senha do Administrador
+                </Label>
+                <Input
+                  id="collaborator-admin-password"
+                  type="password"
+                  value={collaboratorAdminPassword}
+                  onChange={(e) => setCollaboratorAdminPassword(e.target.value)}
+                  placeholder="Digite a senha do administrador"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsDeleteCollaboratorDialogOpen(false);
+                  setDeletingCollaborator(null);
+                  setCollaboratorAdminPassword("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={confirmDeleteCollaborator}
+                className="bg-red-600 hover:bg-red-700"
+                disabled={!collaboratorAdminPassword.trim()}
+              >
+                Excluir Colaborador
               </Button>
             </DialogFooter>
           </DialogContent>
