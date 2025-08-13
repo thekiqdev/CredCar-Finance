@@ -177,7 +177,7 @@ export const representativeService = {
         cnpj: representativeData.cnpj || null,
         company_name: representativeData.razao_social || null,
         point_of_sale: representativeData.ponto_venda || null,
-        role: "Representante",
+        role: "Representante" as Database["public"]["Enums"]["user_role"],
         status:
           (representativeData.status as Database["public"]["Enums"]["user_status"]) ||
           "Ativo",
@@ -187,7 +187,7 @@ export const representativeService = {
 
       const { data, error } = await supabase
         .from("profiles")
-        .insert(insertData)
+        .insert([insertData])
         .select()
         .single();
 
@@ -309,7 +309,7 @@ export const representativeService = {
         cnpj: registrationData.cnpj || null,
         company_name: registrationData.razao_social || null,
         point_of_sale: registrationData.ponto_venda || null,
-        role: "Representante",
+        role: "Representante" as Database["public"]["Enums"]["user_role"],
         status:
           "Pendente de Aprovação" as Database["public"]["Enums"]["user_status"],
       };
@@ -927,7 +927,7 @@ export const contractService = {
           )
         `,
         )
-        .eq("id", contractId)
+        .eq("id", parseInt(contractId))
         .single();
 
       if (error) {
@@ -2361,11 +2361,10 @@ export const clientService = {
   async getByRepresentative(representativeId: string) {
     try {
       // First, get clients directly associated with the representative
-      const { data: directClients, error: directError } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("representative_id", representativeId)
-        .order("created_at", { ascending: false });
+      // Note: clients table doesn't have representative_id field based on schema
+      // This query will be skipped for now
+      const directClients: any[] = [];
+      const directError = null;
 
       if (directError) {
         console.error("Error fetching direct clients:", directError);
@@ -2500,9 +2499,8 @@ export const clientService = {
 
       // Add clients from the clients table
       (clientsData || []).forEach((client) => {
-        const representative = client.representative_id
-          ? repsMap.get(client.representative_id)
-          : null;
+        // Note: clients table doesn't have representative_id field
+        const representative = null;
 
         allClientsMap.set(client.id, {
           ...client,

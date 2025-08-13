@@ -61,7 +61,7 @@ import {
   contractTemplateService,
 } from "@/lib/supabase";
 import { electronicSignatureService } from "@/lib/supabase";
-import { ContractStatus } from "@/types/supabase";
+import { Database } from "@/types/supabase";
 
 type ContractStatus = Database["public"]["Enums"]["contract_status"];
 

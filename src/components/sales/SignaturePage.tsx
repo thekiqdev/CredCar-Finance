@@ -189,7 +189,7 @@ const SignaturePage: React.FC = () => {
           )
         `,
         )
-        .eq("id", contractId)
+        .eq("id", parseInt(contractId!))
         .single();
 
       if (fetchError) {
@@ -527,7 +527,7 @@ const SignaturePage: React.FC = () => {
       const { data: contractData, error: fetchError } = await supabase
         .from("contracts")
         .select("contract_content")
-        .eq("id", contractId)
+        .eq("id", parseInt(contractId))
         .single();
 
       if (fetchError) {
@@ -590,7 +590,7 @@ const SignaturePage: React.FC = () => {
           contract_content: updatedContent,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", contractId);
+        .eq("id", parseInt(contractId));
 
       if (updateError) {
         console.error("Error updating contract content:", updateError);
