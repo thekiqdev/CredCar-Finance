@@ -159,7 +159,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
       const [city, state] = cityState ? cityState.split(" - ") : ["", ""];
 
       // Check if client already exists
-      let clientId: string;
+      let clientId: number;
       const { data: existingClient } = await supabase
         .from("clients")
         .select("id")
@@ -179,7 +179,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
           .eq("id", existingClient.id);
 
         if (updateError) throw updateError;
-        clientId = existingClient.id.toString();
+        clientId = existingClient.id;
       } else {
         // Create new client - using correct column names from database schema
         const { data: newClient, error: clientError } = await supabase
@@ -197,7 +197,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
           .single();
 
         if (clientError) throw clientError;
-        clientId = newClient.id.toString();
+        clientId = newClient.id;
       }
 
       // Generate contract number
@@ -210,9 +210,9 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
           {
             contract_code: contractNumber, // Using 'contract_code' as per schema
             representative_id: contractRepresentativeId,
-            client_id: parseInt(clientId), // Convert to number as per schema
+            client_id: clientId, // Already a number
             commission_table_id: selectedPlan!.id, // Using the plan ID
-            quota_id: selectedQuota!.id, // Add quota_id to link the contract to the quota
+            quota_id: selectedQuota!.id.toString(), // Add quota_id to link the contract to the quota
             credit_amount: selectedCreditRange!.valor_credito.toString(),
             total_value: selectedCreditRange!.valor_credito.toString(),
             remaining_value: (
