@@ -9,7 +9,7 @@ BEGIN
     END IF;
 END $$;
 
--- First, create or update the user_role enum to include 'Representante'
+-- Create or update the user_role enum to include 'Representante'
 DO $$
 BEGIN
     -- Check if the enum type exists
@@ -19,6 +19,29 @@ BEGIN
         -- Add 'Representante' to existing enum if it doesn't exist
         IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'Representante' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_role')) THEN
             ALTER TYPE user_role ADD VALUE 'Representante';
+        END IF;
+    END IF;
+END $$;
+
+-- Create or update the user_status enum
+DO $$
+BEGIN
+    -- Check if the enum type exists
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_status') THEN
+        CREATE TYPE user_status AS ENUM ('Ativo', 'Inativo', 'Pendente de Aprovação', 'Documentos Pendentes', 'Pausado', 'Cancelado');
+    ELSE
+        -- Add missing values to existing enum if they don't exist
+        IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'Pendente de Aprovação' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_status')) THEN
+            ALTER TYPE user_status ADD VALUE 'Pendente de Aprovação';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'Documentos Pendentes' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_status')) THEN
+            ALTER TYPE user_status ADD VALUE 'Documentos Pendentes';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'Pausado' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_status')) THEN
+            ALTER TYPE user_status ADD VALUE 'Pausado';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'Cancelado' AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'user_status')) THEN
+            ALTER TYPE user_status ADD VALUE 'Cancelado';
         END IF;
     END IF;
 END $$;

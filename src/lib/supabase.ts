@@ -115,26 +115,42 @@ export const representativeService = {
 
   // Get representative by email from profiles table
   async getByEmail(email: string): Promise<Representative | null> {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("email", email)
-      .eq("role", "Representante")
-      .single();
+    try {
+      console.log("Searching for representative with email:", email);
 
-    if (error) {
-      if (error.code === "PGRST116") return null; // Not found
-      throw error;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("email", email.toLowerCase().trim())
+        .eq("role", "Representante")
+        .single();
+
+      if (error) {
+        console.log("Error or not found:", error.code, error.message);
+        if (error.code === "PGRST116") return null; // Not found
+        throw error;
+      }
+
+      console.log("Representative found:", {
+        id: data.id,
+        name: data.full_name,
+        email: data.email,
+        status: data.status,
+      });
+
+      return {
+        ...data,
+        name: data.full_name,
+        razao_social: data.company_name,
+        ponto_venda: data.point_of_sale,
+        total_sales: 0,
+        contracts_count: 0,
+        updated_at: data.created_at,
+      };
+    } catch (error) {
+      console.error("Error in getByEmail:", error);
+      return null;
     }
-    return {
-      ...data,
-      name: data.full_name,
-      razao_social: data.company_name,
-      ponto_venda: data.point_of_sale,
-      total_sales: 0,
-      contracts_count: 0,
-      updated_at: data.created_at,
-    };
   },
 
   // Create new representative in profiles table
@@ -164,26 +180,24 @@ export const representativeService = {
         // Continue if it's just a "not found" error
       }
 
-      // Generate a proper UUID for the new profile
-      const profileId = crypto.randomUUID();
-      console.log("Generated profile ID:", profileId);
-
-      // Prepare the insert data with proper field mapping
+      // Prepare the insert data with proper field mapping (let database generate UUID)
       const insertData = {
-        id: profileId,
         full_name: representativeData.name,
-        email: representativeData.email,
-        phone: representativeData.phone || null,
-        cnpj: representativeData.cnpj || null,
-        company_name: representativeData.razao_social || null,
-        point_of_sale: representativeData.ponto_venda || null,
+        email: representativeData.email.toLowerCase().trim(),
+        phone: representativeData.phone?.trim() || null,
+        cnpj: representativeData.cnpj?.replace(/\D/g, "") || null, // Remove formatting
+        company_name: representativeData.razao_social?.trim() || null,
+        point_of_sale: representativeData.ponto_venda?.trim() || null,
         role: "Representante" as Database["public"]["Enums"]["user_role"],
         status:
           (representativeData.status as Database["public"]["Enums"]["user_status"]) ||
           "Ativo",
       };
 
-      console.log("Inserting profile data:", insertData);
+      console.log("Inserting profile data:", {
+        ...insertData,
+        cnpj: insertData.cnpj ? `${insertData.cnpj.substring(0, 4)}****` : null, // Mask CNPJ in logs
+      });
 
       const { data, error } = await supabase
         .from("profiles")
@@ -199,9 +213,17 @@ export const representativeService = {
           details: error.details,
           hint: error.hint,
         });
-        throw new Error(
-          `Erro ao inserir no banco de dados: ${error.message} (Código: ${error.code})`,
-        );
+
+        // Handle specific error cases
+        if (error.code === "23505") {
+          // Unique constraint violation
+          if (error.message.includes("email")) {
+            throw new Error("Email já está em uso");
+          }
+          throw new Error("Dados duplicados encontrados");
+        }
+
+        throw new Error(`Erro ao inserir no banco de dados: ${error.message}`);
       }
 
       if (!data) {
@@ -224,14 +246,8 @@ export const representativeService = {
 
       if (updateError) {
         console.error("Commission code update error:", updateError);
-        console.error("Update error details:", {
-          code: updateError.code,
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-        });
         throw new Error(
-          `Erro ao atualizar código de comissão: ${updateError.message} (Código: ${updateError.code})`,
+          `Erro ao atualizar código de comissão: ${updateError.message}`,
         );
       }
 
@@ -277,23 +293,32 @@ export const representativeService = {
     password: string;
   }): Promise<Representative> {
     try {
-      console.log("Starting public registration with data:", registrationData);
+      console.log("Starting public registration with data:", {
+        name: registrationData.name,
+        email: registrationData.email,
+        phone: registrationData.phone,
+        cnpj: registrationData.cnpj,
+        razao_social: registrationData.razao_social,
+        ponto_venda: registrationData.ponto_venda,
+      });
 
       // Check if email already exists
       try {
         const existingUser = await this.getByEmail(registrationData.email);
         if (existingUser) {
+          console.log("Email already exists:", registrationData.email);
           throw new Error("Email já está em uso");
         }
       } catch (emailCheckError) {
-        console.error("Error checking existing email:", emailCheckError);
+        console.log("Email check result:", emailCheckError);
         if (
           emailCheckError instanceof Error &&
           emailCheckError.message === "Email já está em uso"
         ) {
           throw emailCheckError;
         }
-        // Continue if it's just a "not found" error
+        // Continue if it's just a "not found" error (which is what we want)
+        console.log("Email is available, continuing with registration");
       }
 
       // Generate a proper UUID for the new profile
@@ -303,22 +328,26 @@ export const representativeService = {
       // Prepare the insert data with proper field mapping
       const insertData = {
         id: profileId,
-        full_name: registrationData.name,
-        email: registrationData.email,
-        phone: registrationData.phone || null,
-        cnpj: registrationData.cnpj || null,
-        company_name: registrationData.razao_social || null,
-        point_of_sale: registrationData.ponto_venda || null,
+        full_name: registrationData.name.trim(),
+        email: registrationData.email.toLowerCase().trim(),
+        phone: registrationData.phone?.trim() || null,
+        cnpj: registrationData.cnpj?.replace(/\D/g, "") || null, // Remove formatting
+        company_name: registrationData.razao_social?.trim() || null,
+        point_of_sale: registrationData.ponto_venda?.trim() || null,
         role: "Representante" as Database["public"]["Enums"]["user_role"],
         status:
           "Pendente de Aprovação" as Database["public"]["Enums"]["user_status"],
+        created_at: new Date().toISOString(),
       };
 
-      console.log("Inserting public registration data:", insertData);
+      console.log("Inserting public registration data:", {
+        ...insertData,
+        cnpj: insertData.cnpj ? `${insertData.cnpj.substring(0, 4)}****` : null, // Mask CNPJ in logs
+      });
 
       const { data, error } = await supabase
         .from("profiles")
-        .insert(insertData)
+        .insert([insertData])
         .select()
         .single();
 
@@ -330,9 +359,27 @@ export const representativeService = {
           details: error.details,
           hint: error.hint,
         });
-        throw new Error(
-          `Erro ao inserir registro público: ${error.message} (Código: ${error.code})`,
-        );
+
+        // Handle specific error cases
+        if (error.code === "23505") {
+          // Unique constraint violation
+          if (error.message.includes("email")) {
+            throw new Error("Email já está em uso");
+          }
+          throw new Error("Dados duplicados encontrados");
+        }
+
+        if (error.code === "23503") {
+          // Foreign key constraint violation
+          throw new Error("Erro de configuração do sistema");
+        }
+
+        if (error.code === "23514") {
+          // Check constraint violation
+          throw new Error("Dados inválidos fornecidos");
+        }
+
+        throw new Error(`Erro ao inserir registro: ${error.message}`);
       }
 
       if (!data) {
@@ -342,17 +389,35 @@ export const representativeService = {
         );
       }
 
-      console.log("Public registration inserted successfully:", data);
-
-      return {
-        ...data,
+      console.log("Public registration inserted successfully:", {
+        id: data.id,
         name: data.full_name,
-        razao_social: data.company_name,
-        ponto_venda: data.point_of_sale,
+        email: data.email,
+        status: data.status,
+      });
+
+      // Return the representative object with proper field mapping
+      const representative: Representative = {
+        id: data.id,
+        full_name: data.full_name,
+        name: data.full_name,
+        email: data.email,
+        phone: data.phone || undefined,
+        cnpj: data.cnpj || undefined,
+        company_name: data.company_name || undefined,
+        razao_social: data.company_name || undefined,
+        point_of_sale: data.point_of_sale || undefined,
+        ponto_venda: data.point_of_sale || undefined,
+        commission_code: data.commission_code || undefined,
+        role: data.role,
+        status: data.status,
         total_sales: 0,
         contracts_count: 0,
+        created_at: data.created_at,
         updated_at: data.created_at,
       };
+
+      return representative;
     } catch (error) {
       console.error("Error in createPublicRegistration:", error);
       if (error instanceof Error) {
@@ -484,17 +549,57 @@ export const representativeService = {
     if (error) throw error;
   },
 
+  // Debug function to check all representatives
+  async debugGetAllRepresentatives(): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("role", "Representante")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching all representatives:", error);
+        throw error;
+      }
+
+      console.log("All representatives in database:", data);
+      return data || [];
+    } catch (error) {
+      console.error("Error in debugGetAllRepresentatives:", error);
+      return [];
+    }
+  },
+
   // Authenticate representative (simplified for demo)
   async authenticate(
     email: string,
     password: string,
   ): Promise<Representative | null> {
-    const representative = await this.getByEmail(email);
-    if (!representative) return null;
+    try {
+      console.log("Attempting to authenticate user:", email);
 
-    // For demo purposes, accept any password for existing users
-    // In production, implement proper authentication with Supabase Auth
-    return representative;
+      const representative = await this.getByEmail(email);
+      if (!representative) {
+        console.log("No representative found with email:", email);
+        return null;
+      }
+
+      console.log("Representative found:", {
+        id: representative.id,
+        name: representative.name,
+        email: representative.email,
+        status: representative.status,
+        role: representative.role,
+      });
+
+      // For demo purposes, accept any password for existing users
+      // In production, implement proper authentication with Supabase Auth
+      return representative;
+    } catch (error) {
+      console.error("Error in authenticate:", error);
+      return null;
+    }
   },
 };
 
@@ -1099,7 +1204,7 @@ export const contractService = {
         .select(
           `
           *,
-          clients!inner (name, email),
+          clients(full_name, name),
           profiles!inner (full_name, email),
           commission_tables!inner (name, commission_percentage)
         `,
@@ -1802,6 +1907,199 @@ export const contractTemplateService = {
     } catch (error) {
       console.error("Error in contractTemplateService.delete:", error);
       throw error;
+    }
+  },
+};
+
+// Administrator service
+export const administratorService = {
+  // Get all administrators
+  async getAll() {
+    try {
+      const { data, error } = await supabase
+        .from("administrators")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching administrators:", error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error in administratorService.getAll:", error);
+      throw error;
+    }
+  },
+
+  // Get administrator by ID
+  async getById(id: string) {
+    try {
+      const { data, error } = await supabase
+        .from("administrators")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) {
+        if (error.code === "PGRST116") return null; // Not found
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in administratorService.getById:", error);
+      throw error;
+    }
+  },
+
+  // Get administrator by email
+  async getByEmail(email: string) {
+    try {
+      const { data, error } = await supabase
+        .from("administrators")
+        .select("*")
+        .eq("email", email.toLowerCase().trim())
+        .single();
+
+      if (error) {
+        if (error.code === "PGRST116") return null; // Not found
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in administratorService.getByEmail:", error);
+      return null;
+    }
+  },
+
+  // Create new administrator
+  async create(adminData: {
+    full_name: string;
+    email: string;
+    phone?: string;
+    role: string;
+    status?: string;
+  }) {
+    try {
+      console.log("Creating administrator with data:", adminData);
+
+      // Check if email already exists
+      const existingAdmin = await this.getByEmail(adminData.email);
+      if (existingAdmin) {
+        throw new Error("Email já está em uso");
+      }
+
+      const insertData = {
+        full_name: adminData.full_name.trim(),
+        email: adminData.email.toLowerCase().trim(),
+        phone: adminData.phone?.trim() || null,
+        role: adminData.role,
+        status: adminData.status || "Ativo",
+      };
+
+      const { data, error } = await supabase
+        .from("administrators")
+        .insert([insertData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating administrator:", error);
+        throw error;
+      }
+
+      console.log("Administrator created successfully:", data);
+      return data;
+    } catch (error) {
+      console.error("Error in administratorService.create:", error);
+      throw error;
+    }
+  },
+
+  // Update administrator
+  async update(
+    id: string,
+    updates: Partial<{
+      full_name: string;
+      email: string;
+      phone: string;
+      role: string;
+      status: string;
+    }>,
+  ) {
+    try {
+      const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("administrators")
+        .update(updateData)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error updating administrator:", error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in administratorService.update:", error);
+      throw error;
+    }
+  },
+
+  // Delete administrator
+  async delete(id: string) {
+    try {
+      const { error } = await supabase
+        .from("administrators")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        console.error("Error deleting administrator:", error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in administratorService.delete:", error);
+      throw error;
+    }
+  },
+
+  // Authenticate administrator
+  async authenticate(email: string, password: string) {
+    try {
+      console.log("Attempting to authenticate administrator:", email);
+
+      const administrator = await this.getByEmail(email);
+      if (!administrator) {
+        console.log("No administrator found with email:", email);
+        return null;
+      }
+
+      console.log("Administrator found:", {
+        id: administrator.id,
+        full_name: administrator.full_name,
+        email: administrator.email,
+        role: administrator.role,
+        status: administrator.status,
+      });
+
+      // For demo purposes, accept any password for existing administrators
+      // In production, implement proper authentication
+      return administrator;
+    } catch (error) {
+      console.error("Error in administratorService.authenticate:", error);
+      return null;
     }
   },
 };

@@ -69,8 +69,9 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
       );
 
       if (!representative) {
+        console.log("Authentication failed for:", email);
         setError(
-          "Email ou senha incorretos. Verifique suas credenciais e tente novamente.",
+          "Email ou senha incorretos. Verifique suas credenciais e tente novamente. Se você acabou de se cadastrar, aguarde alguns minutos e tente novamente.",
         );
         setIsLoading(false);
         return;

@@ -203,6 +203,48 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
       // Generate contract number
       const contractNumber = `CONT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
+      // Get or create a commission table entry for this plan
+      // First, check if there's already a commission table for this plan
+      let commissionTableId;
+      const { data: existingCommissionTable } = await supabase
+        .from("commission_tables")
+        .select("id")
+        .eq("name", selectedPlan!.nome)
+        .single();
+
+      if (existingCommissionTable) {
+        commissionTableId = existingCommissionTable.id;
+      } else {
+        // Create a new commission table entry for this plan
+        const { data: newCommissionTable, error: commissionTableError } =
+          await supabase
+            .from("commission_tables")
+            .insert([
+              {
+                name: selectedPlan!.nome,
+                commission_percentage: 4, // Default 4%
+                payment_installments:
+                  selectedCreditRange!.numero_total_parcelas,
+                payment_details:
+                  selectedPlan!.descricao || `Plano ${selectedPlan!.nome}`,
+              },
+            ])
+            .select("id")
+            .single();
+
+        if (commissionTableError) {
+          console.error(
+            "Error creating commission table:",
+            commissionTableError,
+          );
+          throw new Error(
+            `Erro ao criar tabela de comissão: ${commissionTableError.message}`,
+          );
+        }
+
+        commissionTableId = newCommissionTable.id;
+      }
+
       // Create contract using the correct schema from the migration
       const { data: contract, error: contractError } = await supabase
         .from("contracts")
@@ -211,7 +253,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
             contract_code: contractNumber, // Using 'contract_code' as per schema
             representative_id: contractRepresentativeId,
             client_id: clientId, // Already a number
-            commission_table_id: selectedPlan!.id, // Using the plan ID
+            commission_table_id: commissionTableId, // Using the commission table ID
             quota_id: selectedQuota!.id, // Add quota_id to link the contract to the quota
             credit_amount: selectedCreditRange!.valor_credito.toString(),
             total_value: selectedCreditRange!.valor_credito.toString(),

@@ -144,17 +144,34 @@ const PublicRegistration = () => {
 
       console.log("Registration submitted successfully:", newUser);
 
+      if (!newUser) {
+        throw new Error("Falha ao criar usuário - nenhum dado retornado");
+      }
+
       // Set the user in localStorage so DocumentUpload can access it
       authService.setCurrentUser(newUser);
 
-      // Redirect to status page
-      navigate("/status-cadastro");
+      // Show success message
+      setIsSuccess(true);
+
+      // Redirect to status page after a short delay
+      setTimeout(() => {
+        navigate("/status-cadastro");
+      }, 1500);
     } catch (error) {
       console.error("Registration error:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Erro desconhecido";
+
       if (errorMessage.includes("Email já está em uso")) {
         setErrors({ email: "Este email já está cadastrado no sistema." });
+      } else if (errorMessage.includes("duplicate key value")) {
+        setErrors({ email: "Este email já está cadastrado no sistema." });
+      } else if (errorMessage.includes("violates foreign key constraint")) {
+        setErrors({
+          submit:
+            "Erro de configuração do sistema. Entre em contato com o suporte.",
+        });
       } else {
         setErrors({ submit: `Erro ao enviar cadastro: ${errorMessage}` });
       }
@@ -180,172 +197,194 @@ const PublicRegistration = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {errors["submit"] && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{errors["submit"]}</AlertDescription>
-              </Alert>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo *</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="Seu nome completo"
-                  className={errors["name"] ? "border-red-500" : ""}
-                />
-                {errors["name"] && (
-                  <p className="text-sm text-red-500">{errors["name"]}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange("email", e.target.value)}
-                  placeholder="seu.email@exemplo.com"
-                  className={errors["email"] ? "border-red-500" : ""}
-                />
-                {errors["email"] && (
-                  <p className="text-sm text-red-500">{errors["email"]}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telefone *</Label>
-                <Input
-                  id="phone"
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange("phone", e.target.value)}
-                  placeholder="(11) 99999-9999"
-                  maxLength={15}
-                  className={errors["phone"] ? "border-red-500" : ""}
-                />
-                {errors["phone"] && (
-                  <p className="text-sm text-red-500">{errors["phone"]}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cnpj">CNPJ *</Label>
-                <Input
-                  id="cnpj"
-                  type="text"
-                  value={formData.cnpj}
-                  onChange={(e) => handleInputChange("cnpj", e.target.value)}
-                  placeholder="00.000.000/0000-00"
-                  maxLength={18}
-                  className={errors["cnpj"] ? "border-red-500" : ""}
-                />
-                {errors["cnpj"] && (
-                  <p className="text-sm text-red-500">{errors["cnpj"]}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="razao_social">Razão Social *</Label>
-                <Input
-                  id="razao_social"
-                  type="text"
-                  value={formData.razao_social}
-                  onChange={(e) =>
-                    handleInputChange("razao_social", e.target.value)
-                  }
-                  placeholder="Nome da empresa"
-                  className={errors["razao_social"] ? "border-red-500" : ""}
-                />
-                {errors["razao_social"] && (
-                  <p className="text-sm text-red-500">
-                    {errors["razao_social"]}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ponto_venda">Ponto de Venda *</Label>
-                <Input
-                  id="ponto_venda"
-                  type="text"
-                  value={formData.ponto_venda}
-                  onChange={(e) =>
-                    handleInputChange("ponto_venda", e.target.value)
-                  }
-                  placeholder="Localização do ponto de venda"
-                  className={errors["ponto_venda"] ? "border-red-500" : ""}
-                />
-                {errors["ponto_venda"] && (
-                  <p className="text-sm text-red-500">
-                    {errors["ponto_venda"]}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha *</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) =>
-                    handleInputChange("password", e.target.value)
-                  }
-                  placeholder="Mínimo 6 caracteres"
-                  className={errors["password"] ? "border-red-500" : ""}
-                />
-                {errors["password"] && (
-                  <p className="text-sm text-red-500">{errors["password"]}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar Senha *</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={(e) =>
-                    handleInputChange("confirmPassword", e.target.value)
-                  }
-                  placeholder="Confirme sua senha"
-                  className={errors["confirmPassword"] ? "border-red-500" : ""}
-                />
-                {errors["confirmPassword"] && (
-                  <p className="text-sm text-red-500">
-                    {errors["confirmPassword"]}
-                  </p>
-                )}
-              </div>
+          {isSuccess ? (
+            <div className="text-center py-8">
+              <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-green-700 mb-2">
+                Cadastro enviado com sucesso!
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Seu cadastro foi enviado para análise. Você será redirecionado
+                para acompanhar o status.
+              </p>
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-green-500 border-t-transparent mx-auto"></div>
             </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {errors["submit"] && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errors["submit"]}</AlertDescription>
+                </Alert>
+              )}
+              {errors["email"] && !errors["submit"] && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errors["email"]}</AlertDescription>
+                </Alert>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome Completo *</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    placeholder="Seu nome completo"
+                    className={errors["name"] ? "border-red-500" : ""}
+                  />
+                  {errors["name"] && (
+                    <p className="text-sm text-red-500">{errors["name"]}</p>
+                  )}
+                </div>
 
-            <div className="pt-4">
-              <Button
-                type="submit"
-                className="w-full bg-red-600 hover:bg-red-700 text-white"
-                disabled={isLoading}
-              >
-                {isLoading ? "Enviando..." : "Solicitar Cadastro"}
-              </Button>
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email *</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
+                    placeholder="seu.email@exemplo.com"
+                    className={errors["email"] ? "border-red-500" : ""}
+                  />
+                  {errors["email"] && (
+                    <p className="text-sm text-red-500">{errors["email"]}</p>
+                  )}
+                </div>
 
-            <div className="text-center pt-4">
-              <Button
-                type="button"
-                variant="link"
-                onClick={() => navigate("/")}
-                className="text-gray-500"
-              >
-                Já tem uma conta? Fazer login
-              </Button>
-            </div>
-          </form>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Telefone *</Label>
+                  <Input
+                    id="phone"
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange("phone", e.target.value)}
+                    placeholder="(11) 99999-9999"
+                    maxLength={15}
+                    className={errors["phone"] ? "border-red-500" : ""}
+                  />
+                  {errors["phone"] && (
+                    <p className="text-sm text-red-500">{errors["phone"]}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cnpj">CNPJ *</Label>
+                  <Input
+                    id="cnpj"
+                    type="text"
+                    value={formData.cnpj}
+                    onChange={(e) => handleInputChange("cnpj", e.target.value)}
+                    placeholder="00.000.000/0000-00"
+                    maxLength={18}
+                    className={errors["cnpj"] ? "border-red-500" : ""}
+                  />
+                  {errors["cnpj"] && (
+                    <p className="text-sm text-red-500">{errors["cnpj"]}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="razao_social">Razão Social *</Label>
+                  <Input
+                    id="razao_social"
+                    type="text"
+                    value={formData.razao_social}
+                    onChange={(e) =>
+                      handleInputChange("razao_social", e.target.value)
+                    }
+                    placeholder="Nome da empresa"
+                    className={errors["razao_social"] ? "border-red-500" : ""}
+                  />
+                  {errors["razao_social"] && (
+                    <p className="text-sm text-red-500">
+                      {errors["razao_social"]}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ponto_venda">Ponto de Venda *</Label>
+                  <Input
+                    id="ponto_venda"
+                    type="text"
+                    value={formData.ponto_venda}
+                    onChange={(e) =>
+                      handleInputChange("ponto_venda", e.target.value)
+                    }
+                    placeholder="Localização do ponto de venda"
+                    className={errors["ponto_venda"] ? "border-red-500" : ""}
+                  />
+                  {errors["ponto_venda"] && (
+                    <p className="text-sm text-red-500">
+                      {errors["ponto_venda"]}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Senha *</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={(e) =>
+                      handleInputChange("password", e.target.value)
+                    }
+                    placeholder="Mínimo 6 caracteres"
+                    className={errors["password"] ? "border-red-500" : ""}
+                  />
+                  {errors["password"] && (
+                    <p className="text-sm text-red-500">{errors["password"]}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirmar Senha *</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={formData.confirmPassword}
+                    onChange={(e) =>
+                      handleInputChange("confirmPassword", e.target.value)
+                    }
+                    placeholder="Confirme sua senha"
+                    className={
+                      errors["confirmPassword"] ? "border-red-500" : ""
+                    }
+                  />
+                  {errors["confirmPassword"] && (
+                    <p className="text-sm text-red-500">
+                      {errors["confirmPassword"]}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <Button
+                  type="submit"
+                  className="w-full bg-red-600 hover:bg-red-700 text-white"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Enviando..." : "Solicitar Cadastro"}
+                </Button>
+              </div>
+
+              <div className="text-center pt-4">
+                <Button
+                  type="button"
+                  variant="link"
+                  onClick={() => navigate("/")}
+                  className="text-gray-500"
+                >
+                  Já tem uma conta? Fazer login
+                </Button>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

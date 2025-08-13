@@ -10,6 +10,7 @@ import {
   supabase,
   authService,
   commissionPlansService,
+  administratorService,
 } from "../../lib/supabase";
 import { Database } from "../../types/supabase";
 import {
@@ -406,24 +407,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     useState(false);
   const [selectedDocument, setSelectedDocument] = useState<any>(null);
   const [documentRejectionReason, setDocumentRejectionReason] = useState("");
-  const [internalUsers, setInternalUsers] = useState([
-    {
-      id: 1,
-      name: "Admin Principal",
-      email: "admin@credicar.com",
-      role: "Administrador",
-      status: "Ativo",
-      createdAt: "2023-01-15",
-    },
-    {
-      id: 2,
-      name: "Suporte Técnico",
-      email: "suporte@credicar.com",
-      role: "Suporte",
-      status: "Ativo",
-      createdAt: "2023-03-20",
-    },
-  ]);
+  const [internalUsers, setInternalUsers] = useState([]);
   const [isNewUserDialogOpen, setIsNewUserDialogOpen] = useState(false);
   const [newInternalUser, setNewInternalUser] = useState({
     name: "",
@@ -482,6 +466,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Clients state
   const [allClients, setAllClients] = useState([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
+  const [isLoadingInternalUsers, setIsLoadingInternalUsers] = useState(true);
   const [clientsFilter, setClientsFilter] = useState("all");
   const [clientsSearch, setClientsSearch] = useState("");
 
@@ -516,6 +501,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           loadAllClients(),
           loadDashboardStats(),
           loadCommissionPlans(),
+          loadInternalUsers(),
         ]);
         console.log("AdminDashboard: All data loaded successfully");
       } catch (error) {
@@ -686,6 +672,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       console.error("Error loading clients:", error);
     } finally {
       setIsLoadingClients(false);
+    }
+  };
+
+  const loadInternalUsers = async () => {
+    try {
+      setIsLoadingInternalUsers(true);
+      console.log("Loading internal users from administrators table...");
+
+      const { data, error } = await supabase
+        .from("administrators")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error loading administrators:", error);
+        return;
+      }
+
+      const formattedUsers = (data || []).map((user) => ({
+        id: user.id,
+        name: user.full_name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        createdAt: user.created_at
+          ? new Date(user.created_at).toISOString().split("T")[0]
+          : new Date().toISOString().split("T")[0],
+      }));
+
+      console.log("Administrators loaded:", formattedUsers);
+      console.log("Total administrators found:", formattedUsers.length);
+
+      // Force a state update by creating a new array
+      setInternalUsers([...formattedUsers]);
+    } catch (error) {
+      console.error("Error in loadInternalUsers:", error);
+    } finally {
+      setIsLoadingInternalUsers(false);
     }
   };
 
@@ -3657,10 +3681,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={activeConfigTab}
                   onValueChange={setActiveConfigTab}
                 >
-                  <TabsList className="grid w-full grid-cols-5">
+                  <TabsList className="grid w-full grid-cols-6">
                     <TabsTrigger value="general-settings">Geral</TabsTrigger>
                     <TabsTrigger value="commission-tables">
                       Planos de Comissão
+                    </TabsTrigger>
+                    <TabsTrigger value="groups-quotas">
+                      Grupos e Cotas
                     </TabsTrigger>
                     <TabsTrigger value="payment-settings">
                       Pagamentos
@@ -4066,6 +4093,328 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </TableBody>
                           </Table>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="groups-quotas" className="space-y-4">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                          <CardTitle>Gerenciamento de Grupos e Cotas</CardTitle>
+                          <CardDescription>
+                            Configure os grupos de cotas e gerencie a
+                            disponibilidade
+                          </CardDescription>
+                        </div>
+                        <Dialog
+                          open={isNewGroupDialogOpen}
+                          onOpenChange={setIsNewGroupDialogOpen}
+                        >
+                          <DialogTrigger asChild>
+                            <Button className="bg-red-600 hover:bg-red-700">
+                              <Group className="mr-2 h-4 w-4" />
+                              Novo Grupo
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Criar Novo Grupo</DialogTitle>
+                              <DialogDescription>
+                                Configure um novo grupo de cotas.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-4">
+                              <div>
+                                <Label htmlFor="group-name">
+                                  Nome do Grupo *
+                                </Label>
+                                <Input
+                                  id="group-name"
+                                  value={newGroup.name}
+                                  onChange={(e) =>
+                                    setNewGroup({
+                                      ...newGroup,
+                                      name: e.target.value,
+                                    })
+                                  }
+                                  placeholder="Ex: Grupo A"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="group-description">
+                                  Descrição
+                                </Label>
+                                <Input
+                                  id="group-description"
+                                  value={newGroup.description}
+                                  onChange={(e) =>
+                                    setNewGroup({
+                                      ...newGroup,
+                                      description: e.target.value,
+                                    })
+                                  }
+                                  placeholder="Descrição do grupo"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="total-quotas">
+                                  Total de Cotas *
+                                </Label>
+                                <Input
+                                  id="total-quotas"
+                                  type="number"
+                                  value={newGroup.totalQuotas}
+                                  onChange={(e) =>
+                                    setNewGroup({
+                                      ...newGroup,
+                                      totalQuotas:
+                                        parseInt(e.target.value) || 0,
+                                    })
+                                  }
+                                  placeholder="10"
+                                />
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setIsNewGroupDialogOpen(false);
+                                  setNewGroup({
+                                    name: "",
+                                    description: "",
+                                    totalQuotas: 10,
+                                  });
+                                }}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                onClick={async () => {
+                                  try {
+                                    if (!newGroup.name.trim()) {
+                                      alert("Nome do grupo é obrigatório");
+                                      return;
+                                    }
+
+                                    // Create group
+                                    const { data: group, error: groupError } =
+                                      await supabase
+                                        .from("groups")
+                                        .insert({
+                                          name: newGroup.name,
+                                          description: newGroup.description,
+                                          total_quotas: newGroup.totalQuotas,
+                                        })
+                                        .select()
+                                        .single();
+
+                                    if (groupError) throw groupError;
+
+                                    // Create quotas for the group
+                                    const quotasToInsert = [];
+                                    for (
+                                      let i = 1;
+                                      i <= newGroup.totalQuotas;
+                                      i++
+                                    ) {
+                                      quotasToInsert.push({
+                                        group_id: group.id,
+                                        quota_number: i,
+                                        status: "Disponível",
+                                      });
+                                    }
+
+                                    const { error: quotasError } =
+                                      await supabase
+                                        .from("quotas")
+                                        .insert(quotasToInsert);
+
+                                    if (quotasError) throw quotasError;
+
+                                    await loadGroups();
+                                    setIsNewGroupDialogOpen(false);
+                                    setNewGroup({
+                                      name: "",
+                                      description: "",
+                                      totalQuotas: 10,
+                                    });
+                                    alert("Grupo criado com sucesso!");
+                                  } catch (error) {
+                                    console.error(
+                                      "Error creating group:",
+                                      error,
+                                    );
+                                    alert(
+                                      "Erro ao criar grupo. Tente novamente.",
+                                    );
+                                  }
+                                }}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Criar Grupo
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </CardHeader>
+                      <CardContent>
+                        {isLoadingGroups ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            {/* Groups Table */}
+                            <div>
+                              <h4 className="font-semibold mb-4">Grupos</h4>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Nome</TableHead>
+                                    <TableHead>Descrição</TableHead>
+                                    <TableHead>Total Cotas</TableHead>
+                                    <TableHead>Disponíveis</TableHead>
+                                    <TableHead>Ocupadas</TableHead>
+                                    <TableHead className="text-right">
+                                      Ações
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {groups.map((group: any) => (
+                                    <TableRow key={group.id}>
+                                      <TableCell className="font-medium">
+                                        {group.name}
+                                      </TableCell>
+                                      <TableCell>
+                                        {group.description || "-"}
+                                      </TableCell>
+                                      <TableCell>
+                                        {group.total_quotas}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge
+                                          variant="outline"
+                                          className="text-green-600"
+                                        >
+                                          {group.available_quotas}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge
+                                          variant="outline"
+                                          className="text-red-600"
+                                        >
+                                          {group.occupied_quotas}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <div className="flex gap-2 justify-end">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              setSelectedGroup(group);
+                                              setIsManageQuotasDialogOpen(true);
+                                            }}
+                                            title="Gerenciar Cotas"
+                                          >
+                                            <Hash className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={async () => {
+                                              const confirmDelete =
+                                                window.confirm(
+                                                  `Tem certeza que deseja excluir o grupo "${group.name}"? Todas as cotas associadas também serão excluídas.`,
+                                                );
+                                              if (!confirmDelete) return;
+
+                                              try {
+                                                const { error } = await supabase
+                                                  .from("groups")
+                                                  .delete()
+                                                  .eq("id", group.id);
+
+                                                if (error) throw error;
+
+                                                await loadGroups();
+                                                alert(
+                                                  "Grupo excluído com sucesso!",
+                                                );
+                                              } catch (error) {
+                                                console.error(
+                                                  "Error deleting group:",
+                                                  error,
+                                                );
+                                                alert(
+                                                  "Erro ao excluir grupo. Tente novamente.",
+                                                );
+                                              }
+                                            }}
+                                            className="text-red-600 hover:text-red-700"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                  {groups.length === 0 && (
+                                    <TableRow>
+                                      <TableCell
+                                        colSpan={6}
+                                        className="text-center py-8 text-muted-foreground"
+                                      >
+                                        Nenhum grupo encontrado. Crie seu
+                                        primeiro grupo.
+                                      </TableCell>
+                                    </TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+
+                            {/* Quick Stats */}
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="p-4 border rounded-lg text-center">
+                                <div className="text-2xl font-bold text-blue-600">
+                                  {groups.length}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  Total de Grupos
+                                </div>
+                              </div>
+                              <div className="p-4 border rounded-lg text-center">
+                                <div className="text-2xl font-bold text-green-600">
+                                  {groups.reduce(
+                                    (sum: number, group: any) =>
+                                      sum + (group.available_quotas || 0),
+                                    0,
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  Cotas Disponíveis
+                                </div>
+                              </div>
+                              <div className="p-4 border rounded-lg text-center">
+                                <div className="text-2xl font-bold text-red-600">
+                                  {groups.reduce(
+                                    (sum: number, group: any) =>
+                                      sum + (group.occupied_quotas || 0),
+                                    0,
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                  Cotas Ocupadas
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </CardContent>
                     </Card>
@@ -4607,25 +4956,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           Cancelar
                         </Button>
                         <Button
-                          onClick={() => {
-                            setInternalUsers([
-                              ...internalUsers,
-                              {
-                                id: internalUsers.length + 1,
-                                ...newInternalUser,
+                          onClick={async () => {
+                            try {
+                              console.log(
+                                "Creating internal user with data:",
+                                newInternalUser,
+                              );
+
+                              // Validate required fields
+                              if (
+                                !newInternalUser.name ||
+                                !newInternalUser.email
+                              ) {
+                                alert("Nome e email são obrigatórios");
+                                return;
+                              }
+
+                              // Create the administrator using the new service
+                              const adminData = {
+                                full_name: newInternalUser.name,
+                                email: newInternalUser.email,
+                                phone: "", // Optional field
+                                role: newInternalUser.role,
                                 status: "Ativo",
-                                createdAt: new Date()
-                                  .toISOString()
-                                  .split("T")[0],
-                              },
-                            ]);
-                            setIsNewUserDialogOpen(false);
-                            setNewInternalUser({
-                              name: "",
-                              email: "",
-                              role: "Suporte",
-                              password: "",
-                            });
+                              };
+
+                              const data =
+                                await administratorService.create(adminData);
+                              console.log(
+                                "Administrator created successfully:",
+                                data,
+                              );
+
+                              // Reload internal users first to get fresh data
+                              await loadInternalUsers();
+
+                              // Then close dialog and clear form
+                              setIsNewUserDialogOpen(false);
+                              setNewInternalUser({
+                                name: "",
+                                email: "",
+                                role: "Suporte",
+                                password: "",
+                              });
+
+                              alert("Colaborador criado com sucesso!");
+                            } catch (error) {
+                              console.error(
+                                "Error in create internal user:",
+                                error,
+                              );
+                              const errorMessage =
+                                error instanceof Error
+                                  ? error.message
+                                  : "Erro desconhecido";
+                              alert(
+                                `Erro ao criar colaborador: ${errorMessage}`,
+                              );
+                            }
                           }}
                           className="bg-red-600 hover:bg-red-700"
                         >
@@ -4645,57 +5033,94 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nome</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Função</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Data de Criação</TableHead>
-                          <TableHead className="text-right">Ações</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {internalUsers.map((user) => (
-                          <TableRow key={user.id}>
-                            <TableCell className="font-medium">
-                              {user.name}
-                            </TableCell>
-                            <TableCell>{user.email}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{user.role}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  user.status === "Ativo"
-                                    ? "default"
-                                    : "destructive"
-                                }
-                              >
-                                {user.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {new Date(user.createdAt).toLocaleDateString(
-                                "pt-BR",
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex gap-2 justify-end">
-                                <Button variant="outline" size="sm">
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button variant="outline" size="sm">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    {isLoadingInternalUsers ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Carregando colaboradores...
+                        </p>
+                      </div>
+                    ) : internalUsers.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Users className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-lg font-medium mb-2">
+                          Nenhum colaborador encontrado
+                        </p>
+                        <p className="text-muted-foreground mb-4">
+                          Adicione colaboradores para gerenciar o sistema.
+                        </p>
+                        <Button
+                          onClick={() => setIsNewUserDialogOpen(true)}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          <PlusCircle className="mr-2 h-4 w-4" />
+                          Adicionar Primeiro Colaborador
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-4">
+                          <p className="text-sm text-muted-foreground">
+                            {internalUsers.length} colaborador(es) encontrado(s)
+                          </p>
+                        </div>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Nome</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead>Função</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Data de Criação</TableHead>
+                              <TableHead className="text-right">
+                                Ações
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {internalUsers.map((user) => (
+                              <TableRow key={user.id}>
+                                <TableCell className="font-medium">
+                                  {user.name || "Nome não informado"}
+                                </TableCell>
+                                <TableCell>{user.email}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">{user.role}</Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={
+                                      user.status === "Ativo"
+                                        ? "default"
+                                        : "destructive"
+                                    }
+                                  >
+                                    {user.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {user.createdAt
+                                    ? new Date(
+                                        user.createdAt,
+                                      ).toLocaleDateString("pt-BR")
+                                    : "Data não disponível"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex gap-2 justify-end">
+                                    <Button variant="outline" size="sm">
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="sm">
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -6081,6 +6506,156 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="bg-red-600 hover:bg-red-700"
               >
                 Criar Antecipação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Quotas Dialog */}
+        <Dialog
+          open={isManageQuotasDialogOpen}
+          onOpenChange={setIsManageQuotasDialogOpen}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Gerenciar Cotas - {selectedGroup?.name}</DialogTitle>
+              <DialogDescription>
+                Visualize e gerencie as cotas do grupo selecionado.
+              </DialogDescription>
+            </DialogHeader>
+            {selectedGroup && (
+              <div className="space-y-6">
+                {/* Group Info */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold mb-2">{selectedGroup.name}</h3>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {selectedGroup.description}
+                  </p>
+                  <div className="flex gap-4 text-sm">
+                    <span>
+                      Total: <strong>{selectedGroup.total_quotas}</strong>
+                    </span>
+                    <span className="text-green-600">
+                      Disponíveis:{" "}
+                      <strong>{selectedGroup.available_quotas}</strong>
+                    </span>
+                    <span className="text-red-600">
+                      Ocupadas: <strong>{selectedGroup.occupied_quotas}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quotas Table */}
+                <div>
+                  <h4 className="font-semibold mb-4">Cotas do Grupo</h4>
+                  <div className="border rounded-lg max-h-96 overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Número</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Representante</TableHead>
+                          <TableHead>Data Atribuição</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {quotas
+                          .filter(
+                            (quota: any) => quota.group_id === selectedGroup.id,
+                          )
+                          .sort(
+                            (a: any, b: any) => a.quota_number - b.quota_number,
+                          )
+                          .map((quota: any) => (
+                            <TableRow key={quota.id}>
+                              <TableCell className="font-medium">
+                                Cota {quota.quota_number}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    quota.status === "Disponível"
+                                      ? "outline"
+                                      : quota.status === "Ocupada"
+                                        ? "destructive"
+                                        : "secondary"
+                                  }
+                                >
+                                  {quota.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {quota.profiles?.full_name || "-"}
+                              </TableCell>
+                              <TableCell>
+                                {quota.assigned_at
+                                  ? new Date(
+                                      quota.assigned_at,
+                                    ).toLocaleDateString("pt-BR")
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {quota.status === "Ocupada" && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={async () => {
+                                      const confirmRelease = window.confirm(
+                                        `Tem certeza que deseja liberar a Cota ${quota.quota_number}?`,
+                                      );
+                                      if (!confirmRelease) return;
+
+                                      try {
+                                        const { error } = await supabase
+                                          .from("quotas")
+                                          .update({
+                                            status: "Disponível",
+                                            representative_id: null,
+                                            assigned_at: null,
+                                            contract_id: null,
+                                            updated_at:
+                                              new Date().toISOString(),
+                                          })
+                                          .eq("id", quota.id);
+
+                                        if (error) throw error;
+
+                                        await loadGroups();
+                                        alert("Cota liberada com sucesso!");
+                                      } catch (error) {
+                                        console.error(
+                                          "Error releasing quota:",
+                                          error,
+                                        );
+                                        alert(
+                                          "Erro ao liberar cota. Tente novamente.",
+                                        );
+                                      }
+                                    }}
+                                    className="text-orange-600 hover:text-orange-700"
+                                  >
+                                    Liberar
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsManageQuotasDialogOpen(false);
+                  setSelectedGroup(null);
+                }}
+              >
+                Fechar
               </Button>
             </DialogFooter>
           </DialogContent>
