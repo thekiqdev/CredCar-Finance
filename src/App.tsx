@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { useRoutes, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import Home from "./components/home";
 import RepresentativeProfile from "./components/dashboard/RepresentativeProfile";
 import AdminDashboard from "./components/dashboard/AdminDashboard";

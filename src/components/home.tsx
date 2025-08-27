@@ -6,6 +6,7 @@ import LoginForm from "./auth/LoginForm";
 const Home = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Check for existing session on component mount
   useEffect(() => {
@@ -42,21 +43,28 @@ const Home = () => {
             case "Documentos Pendentes":
               console.log("Checking document approval status...");
               // Check if documents are actually approved
-              const documentsApproved =
-                await authService.checkDocumentsApproved(user.id);
-              if (documentsApproved) {
-                console.log("Documents approved, redirecting to dashboard");
-                // Refresh user data to get updated status
-                const updatedUser = await authService.refreshUserData(user.id);
-                if (updatedUser && updatedUser.status === "Ativo") {
-                  navigate("/representante");
+              try {
+                const documentsApproved =
+                  await authService.checkDocumentsApproved(user.id);
+                if (documentsApproved) {
+                  console.log("Documents approved, redirecting to dashboard");
+                  // Refresh user data to get updated status
+                  const updatedUser = await authService.refreshUserData(
+                    user.id,
+                  );
+                  if (updatedUser && updatedUser.status === "Ativo") {
+                    navigate("/representante");
+                  } else {
+                    navigate("/documentos");
+                  }
                 } else {
+                  console.log(
+                    "Documents still pending, redirecting to document upload",
+                  );
                   navigate("/documentos");
                 }
-              } else {
-                console.log(
-                  "Documents still pending, redirecting to document upload",
-                );
+              } catch (docError) {
+                console.error("Error checking documents:", docError);
                 navigate("/documentos");
               }
               break;
@@ -70,6 +78,9 @@ const Home = () => {
             case "Cancelado":
               console.log("Inactive user, clearing session");
               authService.logout();
+              setAuthError(
+                "Sua conta está inativa. Entre em contato com o administrador.",
+              );
               break;
 
             default:
@@ -83,12 +94,20 @@ const Home = () => {
       } catch (error) {
         console.error("Error checking auth status:", error);
         authService.logout();
+        setAuthError(
+          "Erro ao verificar status de autenticação. Por favor, tente novamente.",
+        );
       } finally {
         setIsLoading(false);
       }
     };
 
-    checkAuthStatus();
+    // Add a small delay to prevent flash
+    const timer = setTimeout(() => {
+      checkAuthStatus();
+    }, 300); // Increased delay to ensure proper initialization
+
+    return () => clearTimeout(timer);
   }, [navigate]);
 
   const handleLoginSuccess = (
@@ -111,7 +130,11 @@ const Home = () => {
     );
   }
 
-  return <LoginForm onLogin={handleLoginSuccess} />;
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-red-50 via-white to-gray-50">
+      <LoginForm onLogin={handleLoginSuccess} />
+    </div>
+  );
 };
 
 export default Home;
