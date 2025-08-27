@@ -61,67 +61,11 @@ import {
   contractTemplateService,
 } from "@/lib/supabase";
 import { electronicSignatureService } from "@/lib/supabase";
-import { Database } from "@/types/supabase";
-
-type ContractStatus = Database["public"]["Enums"]["contract_status"];
-
-interface ContractData {
-  id: number;
-  contract_code: string;
-  total_value: number;
-  remaining_value: number;
-  total_installments: number;
-  paid_installments: number;
-  status: ContractStatus;
-  created_at: string;
-  contract_content: string | null;
-  client: {
-    id: number;
-    full_name: string;
-    email: string | null;
-    phone: string | null;
-    cpf_cnpj: string | null;
-    address: string | null;
-  };
-  commission_table: {
-    id: number;
-    name: string;
-    commission_percentage: number;
-    payment_details: string | null;
-    payment_installments: number;
-  };
-  representative: {
-    id: string;
-    full_name: string;
-    email: string;
-    phone: string | null;
-    commission_code: string | null;
-  };
-  quota: {
-    id: number;
-    quota_number: number;
-    group: {
-      id: number;
-      name: string;
-      description: string | null;
-    };
-  } | null;
-  invoices: {
-    id: number;
-    invoice_code: string;
-    value: number;
-    due_date: string;
-    status: string;
-    paid_at: string | null;
-    payment_link_pix: string | null;
-    payment_link_boleto: string | null;
-  }[];
-}
-
-interface ContractDetailsProps {
-  contractId?: string;
-  onBack?: () => void;
-}
+import {
+  ContractStatus,
+  ContractData,
+  ContractDetailsProps,
+} from "@/types/supabase";
 
 const ContractDetails: React.FC<ContractDetailsProps> = ({
   contractId: propContractId,
@@ -760,7 +704,7 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
 
       const { error } = await supabase
         .from("contracts")
-        .update({ status: "Aprovado" as ContractStatus })
+        .update({ status: "Aprovado" })
         .eq("id", contract.id);
 
       if (error) {
@@ -791,7 +735,7 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
 
       const { error } = await supabase
         .from("contracts")
-        .update({ status: "Reprovado" as ContractStatus })
+        .update({ status: "Reprovado" })
         .eq("id", contract.id);
 
       if (error) {
@@ -834,6 +778,134 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
     } finally {
       setIsProcessing(false);
       setIsDeleteDialogOpen(false);
+    }
+  };
+
+  const updateContractStatusAfterSignature = async (
+    contractId: string | number,
+  ) => {
+    try {
+      const { data, error } = await supabase
+        .from("contracts")
+        .update({ status: "Aprovado" as ContractStatus })
+        .eq("id", contractId)
+        .select()
+        .single();
+
+      if (error) {
+        throw new Error(
+          `Erro ao atualizar status do contrato: ${error.message}`,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error updating contract status:", error);
+      throw new Error(`Erro ao atualizar status do contrato: ${error.message}`);
+    }
+  };
+
+  const checkDocumentsApproved = async (
+    representativeId: string | number,
+  ): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from("contracts")
+        .select("status")
+        .eq("representative.id", representativeId)
+        .eq("status", "Aprovado")
+        .single();
+
+      if (error) {
+        console.error("Error checking documents approval:", error);
+        return false;
+      }
+
+      return data.status === "Aprovado";
+    } catch (error) {
+      console.error("Error checking documents approval:", error);
+      return false;
+    }
+  };
+
+  const refreshUserData = async (
+    userId: string | number,
+  ): Promise<Representative | null> => {
+    try {
+      const { data, error } = await supabase
+        .from("contracts")
+        .select("*")
+        .eq("representative.id", userId)
+        .eq("status", "Pendente")
+        .single();
+
+      if (error) {
+        console.error("Error creating required documents:", error);
+        throw new Error(`Erro ao criar documentos: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error("Contrato não encontrado");
+      }
+
+      // Create required documents
+      const { error: createError } =
+        await contractService.createRequiredDocuments(data.id, userId);
+
+      if (createError) {
+        console.error("Error creating required documents:", createError);
+        throw new Error(`Erro ao criar documentos: ${createError.message}`);
+      }
+
+      alert("Documentos criados com sucesso!");
+    } catch (error) {
+      console.error("Error creating required documents:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao criar documentos: ${errorMessage}`);
+    }
+  };
+
+  const approveAllDocuments = async (
+    representativeId: string | number,
+    approvedBy: string,
+  ): Promise<void> => {
+    try {
+      const { data, error } = await supabase
+        .from("contracts")
+        .select("*")
+        .eq("representative.id", representativeId)
+        .eq("status", "Pendente")
+        .single();
+
+      if (error) {
+        console.error("Error approving all documents:", error);
+        throw new Error(`Erro ao aprovar documentos: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error("Contrato não encontrado");
+      }
+
+      // Update contract status to "Aprovado"
+      const { error: updateError } = await supabase
+        .from("contracts")
+        .update({ status: "Aprovado", approved_by: approvedBy })
+        .eq("id", data.id);
+
+      if (updateError) {
+        console.error("Error updating contract status:", updateError);
+        throw new Error(
+          `Erro ao atualizar status do contrato: ${updateError.message}`,
+        );
+      }
+
+      alert("Todos os documentos foram aprovados com sucesso!");
+    } catch (error) {
+      console.error("Error approving all documents:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao aprovar documentos: ${errorMessage}`);
     }
   };
 

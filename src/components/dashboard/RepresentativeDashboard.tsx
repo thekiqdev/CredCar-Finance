@@ -330,9 +330,9 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
 
     // Check if user can delete this contract
     const canDelete =
-      contract.status === "Pendente" ||
-      contract.status === "Cancelado" ||
-      contract.status === "Reprovado";
+      contract.status.toLowerCase() === "pendente" ||
+      contract.status.toLowerCase() === "cancelado" ||
+      contract.status.toLowerCase() === "reprovado";
 
     if (!canDelete) {
       alert(
