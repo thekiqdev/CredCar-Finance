@@ -354,7 +354,6 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
                 )}
               </Button>
             </form>
-
             {/* Registration Link */}
             <div className="mt-6 pt-6 border-t border-gray-200">
               <div className="text-center">
@@ -371,25 +370,7 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
                 </Button>
               </div>
             </div>
-
             {/* Demo Credentials */}
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <p className="text-xs text-gray-500 text-center mb-2 font-medium">
-                Credenciais de demonstração:
-              </p>
-              <div className="text-xs text-gray-600 space-y-1">
-                <div className="flex justify-between">
-                  <span>Admin:</span>
-                  <span className="font-mono">
-                    admin@credicar.com / admin123
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Representante:</span>
-                  <span className="font-mono">Qualquer email cadastrado</span>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
