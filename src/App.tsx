@@ -11,7 +11,6 @@ import SalesSimulator from "./components/sales/SalesSimulator";
 import ContractDetails from "./components/sales/ContractDetails";
 import SignaturePage from "./components/sales/SignaturePage";
 import ContractViewOnly from "./components/sales/ContractViewOnly";
-import routes from "tempo-routes";
 
 function App() {
   return (
@@ -25,7 +24,6 @@ function App() {
         </div>
       }
     >
-      {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/admindashboard" element={<AdminDashboard />} />
