@@ -299,6 +299,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     numero_total_parcelas: "80",
   });
 
+  // Dynamic installments state
+  const [dynamicInstallments, setDynamicInstallments] = useState([]);
+  const [nextInstallmentNumber, setNextInstallmentNumber] = useState(2);
+
   // Installment Conditions Management State
   const [isManageInstallmentsDialogOpen, setIsManageInstallmentsDialogOpen] =
     useState(false);
@@ -1971,6 +1975,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsManagePlanDialogOpen(true);
   };
 
+  // Dynamic installments functions
+  const addDynamicInstallment = () => {
+    const newInstallment = {
+      id: Date.now(),
+      numero_parcela: nextInstallmentNumber,
+      valor_parcela: "",
+    };
+    setDynamicInstallments([...dynamicInstallments, newInstallment]);
+    setNextInstallmentNumber(nextInstallmentNumber + 1);
+  };
+
+  const removeDynamicInstallment = (id) => {
+    const updatedInstallments = dynamicInstallments.filter(
+      (inst) => inst.id !== id,
+    );
+    setDynamicInstallments(updatedInstallments);
+
+    // Recalculate next installment number
+    const maxNumber = Math.max(
+      1, // Start from 2 (since 1st installment is always present)
+      ...updatedInstallments.map((inst) => inst.numero_parcela),
+    );
+    setNextInstallmentNumber(maxNumber + 1);
+  };
+
+  const updateDynamicInstallmentValue = (id, value) => {
+    setDynamicInstallments(
+      dynamicInstallments.map((inst) =>
+        inst.id === id ? { ...inst, valor_parcela: value } : inst,
+      ),
+    );
+  };
+
+  const resetDynamicInstallments = () => {
+    setDynamicInstallments([]);
+    setNextInstallmentNumber(2);
+  };
+
   // Credit Range Management Functions
   const handleCreateCreditRange = async () => {
     try {
@@ -1985,7 +2027,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         return;
       }
 
-      await commissionPlansService.createCreditRange({
+      // Validate dynamic installments
+      for (const installment of dynamicInstallments) {
+        if (
+          !installment.valor_parcela ||
+          parseFloat(installment.valor_parcela) <= 0
+        ) {
+          alert(
+            `Por favor, informe um valor válido para a ${installment.numero_parcela}ª parcela`,
+          );
+          return;
+        }
+      }
+
+      // Create the credit range first
+      const creditRange = await commissionPlansService.createCreditRange({
         plano_id: selectedPlan.id,
         valor_credito: parseFloat(newCreditRange.valor_credito),
         valor_primeira_parcela: parseFloat(
@@ -1998,6 +2054,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           parseInt(newCreditRange.numero_total_parcelas) || 80,
       });
 
+      // Create individual installment records for dynamic installments
+      if (dynamicInstallments.length > 0) {
+        for (const installment of dynamicInstallments) {
+          try {
+            await commissionPlansService.createInstallmentCondition({
+              faixa_credito_id: creditRange.id,
+              numero_parcela: installment.numero_parcela,
+              valor_parcela: parseFloat(installment.valor_parcela),
+            });
+          } catch (installmentError) {
+            console.error(
+              `Error creating installment ${installment.numero_parcela}:`,
+              installmentError,
+            );
+            // Continue with other installments even if one fails
+          }
+        }
+      }
+
       await loadCommissionPlans();
       setIsNewCreditRangeDialogOpen(false);
       setNewCreditRange({
@@ -2006,7 +2081,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         valor_parcelas_restantes: "",
         numero_total_parcelas: "80",
       });
-      alert("Faixa de crédito criada com sucesso!");
+      resetDynamicInstallments();
+
+      const installmentMessage =
+        dynamicInstallments.length > 0
+          ? ` com ${dynamicInstallments.length} parcela(s) customizada(s)`
+          : "";
+      alert(`Faixa de crédito criada com sucesso${installmentMessage}!`);
     } catch (error) {
       console.error("Error creating credit range:", error);
       alert("Erro ao criar faixa de crédito. Tente novamente.");
@@ -6918,7 +6999,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           open={isNewCreditRangeDialogOpen}
           onOpenChange={setIsNewCreditRangeDialogOpen}
         >
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Adicionar Faixa de Crédito</DialogTitle>
               <DialogDescription>
@@ -6945,7 +7026,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div>
                 <Label htmlFor="first-installment-value">
-                  Valor da Primeira Parcela *
+                  Valor da 1ª Parcela *
                 </Label>
                 <Input
                   id="first-installment-value"
@@ -6961,6 +7042,62 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="Ex: 2000.00"
                 />
               </div>
+
+              {/* Dynamic Installments Section */}
+              {dynamicInstallments.length > 0 && (
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium text-gray-700">
+                    Parcelas Customizadas
+                  </Label>
+                  {dynamicInstallments.map((installment) => (
+                    <div
+                      key={installment.id}
+                      className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg"
+                    >
+                      <Label className="text-sm font-medium min-w-[80px]">
+                        {installment.numero_parcela}ª Parcela:
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={installment.valor_parcela}
+                        onChange={(e) =>
+                          updateDynamicInstallmentValue(
+                            installment.id,
+                            e.target.value,
+                          )
+                        }
+                        placeholder="Ex: 250.00"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeDynamicInstallment(installment.id)}
+                        className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Installment Button */}
+              <div className="flex justify-start">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addDynamicInstallment}
+                  className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Adicionar Parcela
+                </Button>
+              </div>
+
               <div>
                 <Label htmlFor="remaining-installments-value">
                   Valor das Parcelas Restantes *
@@ -6978,7 +7115,82 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }
                   placeholder="Ex: 250.00"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Este valor será aplicado a todas as parcelas não customizadas
+                  {dynamicInstallments.length > 0 &&
+                    ` (exceto as ${dynamicInstallments.length} parcela(s) customizada(s) acima)`}
+                </p>
               </div>
+
+              <div>
+                <Label htmlFor="total-installments">
+                  Número Total de Parcelas
+                </Label>
+                <Input
+                  id="total-installments"
+                  type="number"
+                  value={newCreditRange.numero_total_parcelas}
+                  onChange={(e) =>
+                    setNewCreditRange({
+                      ...newCreditRange,
+                      numero_total_parcelas: e.target.value,
+                    })
+                  }
+                  placeholder="80"
+                />
+              </div>
+
+              {/* Summary */}
+              {(dynamicInstallments.length > 0 ||
+                newCreditRange.valor_primeira_parcela ||
+                newCreditRange.valor_parcelas_restantes) && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">
+                    Resumo das Parcelas
+                  </h4>
+                  <div className="space-y-1 text-sm text-blue-800">
+                    {newCreditRange.valor_primeira_parcela && (
+                      <p>
+                        • 1ª Parcela:{" "}
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(
+                          parseFloat(newCreditRange.valor_primeira_parcela) ||
+                            0,
+                        )}
+                      </p>
+                    )}
+                    {dynamicInstallments.map(
+                      (installment) =>
+                        installment.valor_parcela && (
+                          <p key={installment.id}>
+                            • {installment.numero_parcela}ª Parcela:{" "}
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(
+                              parseFloat(installment.valor_parcela) || 0,
+                            )}
+                          </p>
+                        ),
+                    )}
+                    {newCreditRange.valor_parcelas_restantes && (
+                      <p>
+                        • Demais parcelas:{" "}
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(
+                          parseFloat(newCreditRange.valor_parcelas_restantes) ||
+                            0,
+                        )}{" "}
+                        cada
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -6989,7 +7201,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     valor_credito: "",
                     valor_primeira_parcela: "",
                     valor_parcelas_restantes: "",
+                    numero_total_parcelas: "80",
                   });
+                  resetDynamicInstallments();
                 }}
               >
                 Cancelar
