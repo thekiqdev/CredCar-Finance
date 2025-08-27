@@ -4,6 +4,7 @@ import Home from "./components/home";
 import RepresentativeProfile from "./components/dashboard/RepresentativeProfile";
 import AdminDashboard from "./components/dashboard/AdminDashboard";
 import RepresentativeDashboard from "./components/dashboard/RepresentativeDashboard";
+import ClientDashboard from "./components/dashboard/ClientDashboard";
 import PublicRegistration from "./components/auth/PublicRegistration";
 import DocumentUpload from "./components/auth/DocumentUpload";
 import SalesSimulator from "./components/sales/SalesSimulator";
@@ -29,6 +30,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/admindashboard" element={<AdminDashboard />} />
         <Route path="/representante" element={<RepresentativeDashboard />} />
+        <Route path="/cliente" element={<ClientDashboard />} />
         <Route path="/simulador" element={<SalesSimulator />} />
         <Route path="/cadastro" element={<PublicRegistration />} />
         <Route

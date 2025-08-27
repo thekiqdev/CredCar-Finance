@@ -254,7 +254,7 @@ const ContractCreationFlow: React.FC<ContractCreationFlowProps> = ({
             representative_id: contractRepresentativeId,
             client_id: clientId, // Already a number
             commission_table_id: commissionTableId, // Using the commission table ID
-            quota_id: selectedQuota!.id, // Add quota_id to link the contract to the quota
+            quota_id: selectedQuota!.id.toString(), // Add quota_id to link the contract to the quota
             credit_amount: selectedCreditRange!.valor_credito.toString(),
             total_value: selectedCreditRange!.valor_credito.toString(),
             remaining_value: (

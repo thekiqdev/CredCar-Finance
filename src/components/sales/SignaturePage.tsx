@@ -189,7 +189,7 @@ const SignaturePage: React.FC = () => {
           )
         `,
         )
-        .eq("id", parseInt(contractId!))
+        .eq("id", parseInt(contractId))
         .single();
 
       if (fetchError) {

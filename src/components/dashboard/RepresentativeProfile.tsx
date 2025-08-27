@@ -469,7 +469,7 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
             <CardContent>
               <div className="text-2xl font-bold">
                 R${" "}
-                {representative.total_sales.toLocaleString("pt-BR", {
+                {(representative.total_sales || 0).toLocaleString("pt-BR", {
                   minimumFractionDigits: 2,
                 })}
               </div>
@@ -491,7 +491,7 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {representative.contracts_count}
+                {representative.contracts_count || 0}
               </div>
               <p className="text-xs text-muted-foreground">
                 Taxa de conversão: 68%
@@ -506,12 +506,15 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
             <CardContent>
               <div className="text-2xl font-bold">
                 R${" "}
-                {(representative.total_sales * 0.04).toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
+                {((representative.total_sales || 0) * 0.04).toLocaleString(
+                  "pt-BR",
+                  {
+                    minimumFractionDigits: 2,
+                  },
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Tabela {representative.commission_table}
+                Tabela {representative.commission_code || "N/A"}
               </p>
             </CardContent>
           </Card>
@@ -625,7 +628,7 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Tabela de Comissão</p>
                   <p className="text-sm text-muted-foreground">
-                    Tabela {representative.commission_table}
+                    Tabela {representative.commission_code || "N/A"}
                   </p>
                 </div>
               </div>
@@ -657,10 +660,10 @@ const RepresentativeProfile: React.FC<RepresentativeProfileProps> = () => {
                   <p className="text-sm font-medium">Ticket Médio</p>
                   <p className="text-sm text-muted-foreground">
                     R${" "}
-                    {representative.contracts_count > 0
+                    {(representative.contracts_count || 0) > 0
                       ? (
-                          representative.total_sales /
-                          representative.contracts_count
+                          (representative.total_sales || 0) /
+                          (representative.contracts_count || 1)
                         ).toLocaleString("pt-BR", { minimumFractionDigits: 2 })
                       : "0,00"}
                   </p>

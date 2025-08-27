@@ -55,6 +55,13 @@ interface ClientData {
   phone: string;
   cpf_cnpj: string;
   address: string;
+  address_street?: string;
+  address_number?: string;
+  address_complement?: string;
+  address_neighborhood?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
 }
 
 interface ClientRegistrationProps {
@@ -93,7 +100,17 @@ const ClientRegistration: React.FC<ClientRegistrationProps> = ({
     zip: "",
   });
 
-  const [errors, setErrors] = useState<Partial<ClientData>>({});
+  const [errors, setErrors] = useState<
+    Partial<ClientData> & {
+      address_street?: string;
+      address_number?: string;
+      address_complement?: string;
+      address_neighborhood?: string;
+      address_city?: string;
+      address_state?: string;
+      address_zip?: string;
+    }
+  >({});
   const [submitting, setSubmitting] = useState(false);
 
   const handleInputChange = (field: keyof ClientData, value: string) => {

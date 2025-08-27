@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.12 (cd3cf9e)"
@@ -46,6 +46,65 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      anticipations: {
+        Row: {
+          anticipation_number: string
+          contract_id: number
+          created_at: string | null
+          discount_amount: number | null
+          discount_percentage: number | null
+          final_amount: number
+          id: string
+          installments_count: number
+          notes: string | null
+          original_amount: number
+          payment_date: string | null
+          payment_method: string | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          anticipation_number: string
+          contract_id: number
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percentage?: number | null
+          final_amount: number
+          id?: string
+          installments_count: number
+          notes?: string | null
+          original_amount: number
+          payment_date?: string | null
+          payment_method?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          anticipation_number?: string
+          contract_id?: number
+          created_at?: string | null
+          discount_amount?: number | null
+          discount_percentage?: number | null
+          final_amount?: number
+          id?: string
+          installments_count?: number
+          notes?: string | null
+          original_amount?: number
+          payment_date?: string | null
+          payment_method?: string | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "anticipations_contract_id_fkey"
+            columns: ["contract_id"]
+            isOneToOne: false
+            referencedRelation: "contracts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clients: {
         Row: {
@@ -541,37 +600,55 @@ export type Database = {
       }
       invoices: {
         Row: {
+          amount: number
           contract_id: number
           due_date: string
           id: number
-          invoice_code: string
+          installment_number: number
+          invoice_code: string | null
+          invoice_number: string | null
+          notes: string | null
           paid_at: string | null
+          payment_date: string | null
           payment_link_boleto: string | null
           payment_link_pix: string | null
+          payment_method: string | null
           status: string
-          value: number
+          value: number | null
         }
         Insert: {
+          amount?: number
           contract_id: number
           due_date: string
           id?: number
-          invoice_code: string
+          installment_number?: number
+          invoice_code?: string | null
+          invoice_number?: string | null
+          notes?: string | null
           paid_at?: string | null
+          payment_date?: string | null
           payment_link_boleto?: string | null
           payment_link_pix?: string | null
+          payment_method?: string | null
           status?: string
-          value: number
+          value?: number | null
         }
         Update: {
+          amount?: number
           contract_id?: number
           due_date?: string
           id?: number
-          invoice_code?: string
+          installment_number?: number
+          invoice_code?: string | null
+          invoice_number?: string | null
+          notes?: string | null
           paid_at?: string | null
+          payment_date?: string | null
           payment_link_boleto?: string | null
           payment_link_pix?: string | null
+          payment_method?: string | null
           status?: string
-          value?: number
+          value?: number | null
         }
         Relationships: [
           {
@@ -886,6 +963,14 @@ export type Database = {
       create_sample_invoices: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      generate_anticipation_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_invoice_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       release_expired_reservations: {
         Args: Record<PropertyKey, never>

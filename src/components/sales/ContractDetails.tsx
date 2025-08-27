@@ -2796,6 +2796,46 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Signature Block Modal */}
+      <Dialog
+        open={isSignatureModalOpen}
+        onOpenChange={setIsSignatureModalOpen}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Inserir Campo de Assinatura</DialogTitle>
+            <DialogDescription>
+              Configure o campo de assinatura que será inserido no contrato.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="signatory-name">Nome do Signatário</Label>
+              <Input
+                id="signatory-name"
+                value={signatureBlockData.signatoryName}
+                onChange={(e) =>
+                  setSignatureBlockData({
+                    ...signatureBlockData,
+                    signatoryName: e.target.value,
+                  })
+                }
+                placeholder="Ex: Cliente, Representante, Testemunha"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsSignatureModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleInsertSignatureBlock}>Inserir Campo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

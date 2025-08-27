@@ -21,6 +21,7 @@ interface LoginFormProps {
 const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [cpf, setCpf] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -262,7 +263,7 @@ const LoginForm = ({ onLogin = () => {} }: LoginFormProps) => {
               Acesse sua conta
             </CardTitle>
             <CardDescription className="text-center text-gray-600">
-              O sistema reconhecerá automaticamente seu tipo de acesso
+              Entre com suas credenciais para acessar o sistema
             </CardDescription>
           </CardHeader>
           <CardContent>

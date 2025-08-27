@@ -143,6 +143,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const navigate = useNavigate();
   const form = useForm();
   const [activeSection, setActiveSection] = useState("dashboard");
+
+  // Check authentication on component mount
+  useEffect(() => {
+    const checkAuth = () => {
+      const currentUser = authService.getCurrentUser();
+      if (
+        !currentUser ||
+        (currentUser.role !== "Administrador" &&
+          currentUser.email !== "admin@credicar.com")
+      ) {
+        console.log(
+          "User not authenticated or not admin, redirecting to login",
+        );
+        navigate("/");
+        return;
+      }
+    };
+
+    checkAuth();
+  }, [navigate]);
   const [activeConfigTab, setActiveConfigTab] = useState("commission-tables");
   const [showContractFlow, setShowContractFlow] = useState(false);
   const [contractFlowStep, setContractFlowStep] = useState<string>("");
@@ -210,6 +230,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedContract, setSelectedContract] = useState<Contract | null>(
     null,
   );
+  const [selectedContractForInvoices, setSelectedContractForInvoices] =
+    useState<Contract | null>(null);
   const [earlyPaymentInstallments, setEarlyPaymentInstallments] = useState("");
   const [contracts, setContracts] = useState<Contract[]>([
     {
@@ -2584,7 +2606,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex h-screen bg-background">
         {/* Sidebar */}
         <div className="hidden md:flex w-64 flex-col bg-card border-r p-4">
-          <div className="flex items-center mb-8">
+          <div
+            className="flex items-center mb-8 cursor-pointer"
+            onClick={() => navigate("/")}
+          >
             <div className="h-8 w-8 rounded-md bg-red-600 mr-2"></div>
             <h1 className="text-xl font-bold">CredCar</h1>
           </div>
@@ -3806,89 +3831,414 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </Card>
                 </div>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Lista de Faturas</CardTitle>
-                    <CardDescription>
-                      Todas as faturas geradas no sistema
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {invoices.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Receipt className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-lg font-medium mb-2">
-                          Nenhuma fatura encontrada
-                        </p>
-                        <p className="text-muted-foreground">
-                          As faturas aparecerão aqui quando forem geradas.
-                        </p>
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>ID</TableHead>
-                            <TableHead>Contrato</TableHead>
-                            <TableHead>Parcela</TableHead>
-                            <TableHead>Valor</TableHead>
-                            <TableHead>Vencimento</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Ações</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {invoices.map((invoice) => (
-                            <TableRow key={invoice.id}>
-                              <TableCell className="font-medium">
-                                {invoice.id}
-                              </TableCell>
-                              <TableCell>{invoice.contractId}</TableCell>
-                              <TableCell>
-                                {invoice.installmentNumber === 0
-                                  ? "Antecipação"
-                                  : `${invoice.installmentNumber}ª`}
-                              </TableCell>
-                              <TableCell>
-                                {new Intl.NumberFormat("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                }).format(invoice.amount)}
-                              </TableCell>
-                              <TableCell>
-                                {new Date(invoice.dueDate).toLocaleDateString(
-                                  "pt-BR",
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    invoice.status === "paid"
-                                      ? "default"
-                                      : invoice.status === "pending"
-                                        ? "outline"
-                                        : "destructive"
+                <div className="grid gap-6 lg:grid-cols-3">
+                  {/* Contracts List */}
+                  <div className="lg:col-span-1">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Contratos Aprovados</CardTitle>
+                        <CardDescription>
+                          Selecione um contrato para ver suas faturas
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="max-h-96 overflow-y-auto">
+                          {allContracts
+                            .filter(
+                              (contract: any) =>
+                                contract.status === "Aprovado" ||
+                                contract.status === "Ativo",
+                            )
+                            .map((contract: any) => (
+                              <div
+                                key={contract.id}
+                                className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${
+                                  selectedContractForInvoices?.id ===
+                                  contract.id.toString()
+                                    ? "bg-red-50 border-l-4 border-l-red-600"
+                                    : ""
+                                }`}
+                                onClick={() => {
+                                  const contractData = {
+                                    id: contract.id.toString(),
+                                    client:
+                                      contract.clients?.name ||
+                                      contract.clients?.full_name ||
+                                      "Cliente não encontrado",
+                                    representative:
+                                      contract.profiles?.full_name ||
+                                      "Representante não encontrado",
+                                    value: parseFloat(
+                                      contract.credit_amount ||
+                                        contract.total_value ||
+                                        "0",
+                                    ),
+                                    installments: 80,
+                                    paidInstallments: 0,
+                                    remainingValue: parseFloat(
+                                      contract.credit_amount ||
+                                        contract.total_value ||
+                                        "0",
+                                    ),
+                                    status: contract.status,
+                                    createdAt:
+                                      contract.created_at ||
+                                      new Date().toISOString(),
+                                  };
+                                  setSelectedContractForInvoices(contractData);
+                                }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <h4 className="font-medium text-sm">
+                                      {contract.contract_number ||
+                                        contract.contract_code ||
+                                        `CONT-${contract.id}`}
+                                    </h4>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {contract.clients?.name ||
+                                        contract.clients?.full_name ||
+                                        "Cliente não encontrado"}
+                                    </p>
+                                    <p className="text-xs font-medium text-green-600 mt-1">
+                                      {new Intl.NumberFormat("pt-BR", {
+                                        style: "currency",
+                                        currency: "BRL",
+                                      }).format(
+                                        contract.credit_amount ||
+                                          contract.total_value ||
+                                          0,
+                                      )}
+                                    </p>
+                                    <div className="mt-2 space-y-1">
+                                      <div className="flex justify-between text-xs">
+                                        <span className="text-muted-foreground">
+                                          Pago:
+                                        </span>
+                                        <span className="text-green-600 font-medium">
+                                          {new Intl.NumberFormat("pt-BR", {
+                                            style: "currency",
+                                            currency: "BRL",
+                                          }).format(
+                                            (contract.credit_amount ||
+                                              contract.total_value ||
+                                              0) * 0.15, // Simulando 15% pago
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between text-xs">
+                                        <span className="text-muted-foreground">
+                                          Restante:
+                                        </span>
+                                        <span className="text-orange-600 font-medium">
+                                          {new Intl.NumberFormat("pt-BR", {
+                                            style: "currency",
+                                            currency: "BRL",
+                                          }).format(
+                                            (contract.credit_amount ||
+                                              contract.total_value ||
+                                              0) * 0.85, // Simulando 85% restante
+                                          )}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <Badge variant="outline" className="text-xs">
+                                    {contract.status}
+                                  </Badge>
+                                </div>
+                              </div>
+                            ))}
+                          {allContracts.filter(
+                            (contract: any) =>
+                              contract.status === "Aprovado" ||
+                              contract.status === "Ativo",
+                          ).length === 0 && (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <FileText className="h-12 w-12 mx-auto mb-2" />
+                              <p className="text-sm">
+                                Nenhum contrato aprovado encontrado
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Invoice Details */}
+                  <div className="lg:col-span-2">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle>
+                              {selectedContractForInvoices
+                                ? `Faturas - ${selectedContractForInvoices.id}`
+                                : "Faturas do Contrato"}
+                            </CardTitle>
+                            <CardDescription>
+                              {selectedContractForInvoices
+                                ? `Cliente: ${selectedContractForInvoices.client}`
+                                : "Selecione um contrato para visualizar as faturas"}
+                            </CardDescription>
+                          </div>
+                          {selectedContractForInvoices && (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  // Generate sample invoices for the selected contract
+                                  const newInvoices = [];
+                                  const installmentValue =
+                                    selectedContractForInvoices.remainingValue /
+                                    80;
+
+                                  for (let i = 1; i <= 3; i++) {
+                                    const dueDate = new Date();
+                                    dueDate.setMonth(dueDate.getMonth() + i);
+
+                                    newInvoices.push({
+                                      id: `INV-${selectedContractForInvoices.id}-${i}`,
+                                      contractId:
+                                        selectedContractForInvoices.id,
+                                      amount: installmentValue,
+                                      installmentNumber: i,
+                                      dueDate: dueDate
+                                        .toISOString()
+                                        .split("T")[0],
+                                      status:
+                                        i === 1 ? "paid" : ("pending" as const),
+                                      createdAt: new Date()
+                                        .toISOString()
+                                        .split("T")[0],
+                                      paidAt:
+                                        i === 1
+                                          ? new Date()
+                                              .toISOString()
+                                              .split("T")[0]
+                                          : undefined,
+                                    });
                                   }
-                                >
-                                  {invoice.status === "paid"
-                                    ? "Pago"
-                                    : invoice.status === "pending"
-                                      ? "Pendente"
-                                      : "Vencido"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button variant="outline" size="sm">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </CardContent>
-                </Card>
+
+                                  setInvoices((prev) => [
+                                    ...prev.filter(
+                                      (inv) =>
+                                        inv.contractId !==
+                                        selectedContractForInvoices.id,
+                                    ),
+                                    ...newInvoices,
+                                  ]);
+                                }}
+                                className="text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50"
+                              >
+                                <Receipt className="mr-2 h-4 w-4" />
+                                Gerar Faturas
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedContract(
+                                    selectedContractForInvoices,
+                                  );
+                                  setIsEarlyPaymentDialogOpen(true);
+                                }}
+                                className="text-green-600 hover:text-green-700 border-green-200 hover:bg-green-50"
+                              >
+                                <CreditCard className="mr-2 h-4 w-4" />
+                                Gerar Antecipação
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {!selectedContractForInvoices ? (
+                          <div className="text-center py-12">
+                            <Receipt className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                            <p className="text-lg font-medium mb-2">
+                              Selecione um Contrato
+                            </p>
+                            <p className="text-muted-foreground">
+                              Escolha um contrato na lista ao lado para
+                              visualizar suas faturas.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {/* Contract Summary */}
+                            <div className="p-4 bg-gray-50 rounded-lg">
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <p className="text-muted-foreground">
+                                    Valor Total
+                                  </p>
+                                  <p className="font-semibold text-green-600">
+                                    {new Intl.NumberFormat("pt-BR", {
+                                      style: "currency",
+                                      currency: "BRL",
+                                    }).format(
+                                      selectedContractForInvoices.value,
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">
+                                    Valor Restante
+                                  </p>
+                                  <p className="font-semibold text-orange-600">
+                                    {new Intl.NumberFormat("pt-BR", {
+                                      style: "currency",
+                                      currency: "BRL",
+                                    }).format(
+                                      selectedContractForInvoices.remainingValue,
+                                    )}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">
+                                    Parcelas
+                                  </p>
+                                  <p className="font-semibold">
+                                    {
+                                      selectedContractForInvoices.paidInstallments
+                                    }
+                                    /{selectedContractForInvoices.installments}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground">
+                                    Status
+                                  </p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {selectedContractForInvoices.status}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Invoices Table */}
+                            {invoices.filter(
+                              (inv) =>
+                                inv.contractId ===
+                                selectedContractForInvoices.id,
+                            ).length === 0 ? (
+                              <div className="text-center py-8">
+                                <Receipt className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                                <p className="text-lg font-medium mb-2">
+                                  Nenhuma fatura gerada
+                                </p>
+                                <p className="text-muted-foreground mb-4">
+                                  Clique em "Gerar Faturas" para criar as
+                                  faturas deste contrato.
+                                </p>
+                              </div>
+                            ) : (
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Fatura</TableHead>
+                                    <TableHead>Parcela</TableHead>
+                                    <TableHead>Valor</TableHead>
+                                    <TableHead>Vencimento</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">
+                                      Ações
+                                    </TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {invoices
+                                    .filter(
+                                      (inv) =>
+                                        inv.contractId ===
+                                        selectedContractForInvoices.id,
+                                    )
+                                    .map((invoice) => (
+                                      <TableRow key={invoice.id}>
+                                        <TableCell className="font-medium">
+                                          {invoice.id}
+                                        </TableCell>
+                                        <TableCell>
+                                          {invoice.installmentNumber === 0
+                                            ? "Antecipação"
+                                            : `${invoice.installmentNumber}/${selectedContractForInvoices.installments}`}
+                                        </TableCell>
+                                        <TableCell>
+                                          {new Intl.NumberFormat("pt-BR", {
+                                            style: "currency",
+                                            currency: "BRL",
+                                          }).format(invoice.amount)}
+                                        </TableCell>
+                                        <TableCell>
+                                          {new Date(
+                                            invoice.dueDate,
+                                          ).toLocaleDateString("pt-BR")}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Badge
+                                            variant={
+                                              invoice.status === "paid"
+                                                ? "default"
+                                                : invoice.status === "pending"
+                                                  ? "outline"
+                                                  : "destructive"
+                                            }
+                                          >
+                                            {invoice.status === "paid"
+                                              ? "Pago"
+                                              : invoice.status === "pending"
+                                                ? "Pendente"
+                                                : "Vencido"}
+                                          </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          <div className="flex gap-2 justify-end">
+                                            <Button variant="outline" size="sm">
+                                              <Eye className="h-4 w-4" />
+                                            </Button>
+                                            {invoice.status === "pending" && (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                  // Mark as paid
+                                                  setInvoices((prev) =>
+                                                    prev.map((inv) =>
+                                                      inv.id === invoice.id
+                                                        ? {
+                                                            ...inv,
+                                                            status:
+                                                              "paid" as const,
+                                                            paidAt: new Date()
+                                                              .toISOString()
+                                                              .split("T")[0],
+                                                          }
+                                                        : inv,
+                                                    ),
+                                                  );
+                                                }}
+                                                className="text-green-600 hover:text-green-700 border-green-200 hover:bg-green-50"
+                                                title="Marcar como pago"
+                                              >
+                                                <CheckCircle className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                </TableBody>
+                              </Table>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -5058,7 +5408,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex gap-2 justify-end">
-                                      <Button variant="ghost" size="sm">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          navigate(
+                                            `/cliente?clientId=${client.id}`,
+                                          )
+                                        }
+                                        title="Acessar painel do cliente"
+                                      >
                                         <Eye className="h-4 w-4" />
                                       </Button>
                                       <Button variant="outline" size="sm">

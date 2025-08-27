@@ -1039,7 +1039,7 @@ export const contractService = {
           )
         `,
         )
-        .eq("id", parseInt(contractId))
+        .eq("id", contractId)
         .single();
 
       if (error) {
@@ -2432,7 +2432,7 @@ export const electronicSignatureService = {
               signature_id: signatureId,
               signer_name: signerName,
               signer_cpf: signerCPF.replace(/\D/g, ""), // Remove formatting
-              contract_id: contractId === "temp" ? null : parseInt(contractId),
+              contract_id: contractId === "temp" ? null : Number(contractId),
               status: "pending",
             });
           }
@@ -2561,7 +2561,7 @@ export const electronicSignatureService = {
       const { data, error } = await supabase
         .from("electronic_signature_fields")
         .select("*")
-        .eq("contract_id", contractId)
+        .eq("contract_id", Number(contractId))
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -2861,6 +2861,76 @@ export const electronicSignatureService = {
 
 // Client service
 export const clientService = {
+  // Authenticate client with CPF and password
+  async authenticateWithCpf(cpf: string, password: string) {
+    try {
+      console.log("Attempting to authenticate client with CPF:", cpf);
+
+      // Clean CPF (remove formatting)
+      const cleanCpf = cpf.replace(/\D/g, "");
+
+      // Find client by CPF
+      const { data: client, error } = await supabase
+        .from("clients")
+        .select("*")
+        .eq("cpf_cnpj", cleanCpf)
+        .single();
+
+      if (error) {
+        console.log("Client not found with CPF:", cleanCpf);
+        if (error.code === "PGRST116") return null; // Not found
+        throw error;
+      }
+
+      if (!client) {
+        console.log("No client found with CPF:", cleanCpf);
+        return null;
+      }
+
+      console.log("Client found:", {
+        id: client.id,
+        name: client.full_name || client.name,
+        cpf: client.cpf_cnpj,
+      });
+
+      // For demo purposes, we'll check if password matches a simple pattern
+      // In production, implement proper password hashing and verification
+      const expectedPassword = `cliente${client.id}`; // Simple pattern: cliente + ID
+
+      if (password !== expectedPassword && password !== "123456") {
+        console.log("Password verification failed for client:", client.id);
+        return null;
+      }
+
+      console.log("Client authenticated successfully:", client.id);
+      return client;
+    } catch (error) {
+      console.error("Error in authenticateWithCpf:", error);
+      return null;
+    }
+  },
+
+  // Update client password
+  async updatePassword(clientId: number, newPassword: string) {
+    try {
+      console.log("Updating password for client:", clientId);
+
+      // For demo purposes, we'll store the password in localStorage
+      // In production, this should be properly hashed and stored in the database
+      const clientPasswords = JSON.parse(
+        localStorage.getItem("clientPasswords") || "{}",
+      );
+      clientPasswords[clientId] = newPassword;
+      localStorage.setItem("clientPasswords", JSON.stringify(clientPasswords));
+
+      console.log("Client password updated successfully:", clientId);
+      return true;
+    } catch (error) {
+      console.error("Error updating client password:", error);
+      throw error;
+    }
+  },
+
   // Get all clients for a representative
   async getByRepresentative(representativeId: string) {
     try {

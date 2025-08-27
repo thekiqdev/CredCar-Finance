@@ -37,6 +37,7 @@ import {
   Filter,
   Edit,
   Trash2,
+  Key,
 } from "lucide-react";
 import {
   Dialog,
@@ -127,12 +128,31 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
     string | null
   >(null);
   const [isContractModalOpen, setIsContractModalOpen] = React.useState(false);
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = React.useState(false);
+  const [selectedClientForPassword, setSelectedClientForPassword] =
+    React.useState<any>(null);
+  const [newPassword, setNewPassword] = React.useState("");
 
   const displayName =
     representativeName || currentUser?.name || "Representante";
 
-  // Load dashboard data on component mount
+  // Check authentication on component mount
   useEffect(() => {
+    const checkAuth = () => {
+      const user = authService.getCurrentUser();
+      if (!user || user.role !== "Representante") {
+        console.log(
+          "User not authenticated or not representative, redirecting to login",
+        );
+        navigate("/");
+        return false;
+      }
+      return true;
+    };
+
+    if (!checkAuth()) return;
+
+    // Continue with existing data loading logic
     const loadDashboardData = async () => {
       if (!currentUser?.id) {
         console.warn("No current user found");
@@ -219,7 +239,7 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
     };
 
     loadDashboardData();
-  }, [currentUser?.id, showContractFlow]); // Add showContractFlow as dependency to reload when contract is created
+  }, [navigate, currentUser && currentUser.id, showContractFlow]); // Add navigate and showContractFlow as dependency to reload when contract is created
 
   const salesProgress =
     (performanceData.totalSales / performanceData.targetSales) * 100;
@@ -241,6 +261,35 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
       );
     } else {
       alert("Valor inválido para retirada");
+    }
+  };
+
+  const handleEditClientPassword = (client: any) => {
+    setSelectedClientForPassword(client);
+    setNewPassword("");
+    setIsPasswordDialogOpen(true);
+  };
+
+  const handleUpdateClientPassword = async () => {
+    if (!selectedClientForPassword || !newPassword.trim()) {
+      alert("Por favor, insira uma nova senha");
+      return;
+    }
+
+    try {
+      await clientService.updatePassword(
+        selectedClientForPassword.id,
+        newPassword,
+      );
+      alert(
+        `Senha do cliente ${selectedClientForPassword.full_name || selectedClientForPassword.name} atualizada com sucesso!`,
+      );
+      setIsPasswordDialogOpen(false);
+      setSelectedClientForPassword(null);
+      setNewPassword("");
+    } catch (error) {
+      console.error("Error updating client password:", error);
+      alert("Erro ao atualizar senha do cliente");
     }
   };
 
@@ -281,10 +330,8 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
 
     // Check if user can delete this contract
     const canDelete =
-      contract.status === "pending" ||
-      contract.status === "pendente" ||
-      contract.status === "cancelled" ||
-      contract.status === "cancelado" ||
+      contract.status === "Pendente" ||
+      contract.status === "Cancelado" ||
       contract.status === "Reprovado";
 
     if (!canDelete) {
@@ -342,9 +389,18 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
       {/* Header */}
       <header className="sticky top-0 z-10 border-b bg-background p-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">
-            Dashboard do Representante
-          </h1>
+          <div className="flex items-center gap-4">
+            <div
+              className="flex items-center cursor-pointer"
+              onClick={() => navigate("/")}
+            >
+              <div className="h-8 w-8 rounded-md bg-red-600 mr-2"></div>
+              <h1 className="text-xl font-bold text-red-600">CredCar</h1>
+            </div>
+            <h2 className="text-lg font-medium text-foreground">
+              Dashboard do Representante
+            </h2>
+          </div>
           <div className="flex items-center gap-4">
             <Button variant="outline" size="sm">
               <Bell className="h-4 w-4 mr-2" />
@@ -393,14 +449,7 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
               <BarChart3 className="mr-2 h-4 w-4" />
               Dashboard
             </Button>
-            <Button
-              variant={activeTab === "simulator" ? "default" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => setActiveTab("simulator")}
-            >
-              <Calculator className="mr-2 h-4 w-4" />
-              Simulador de Vendas
-            </Button>
+
             <Button
               variant={activeTab === "contracts" ? "default" : "ghost"}
               className="w-full justify-start"
@@ -607,39 +656,6 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
           {!showContractFlow &&
             !isLoading &&
             !error &&
-            activeTab === "simulator" && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold">Simulador de Vendas</h2>
-                  <Button variant="outline" size="sm">
-                    <Calculator className="mr-2 h-4 w-4" />
-                    Nova Simulação
-                  </Button>
-                </div>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Acesso ao Simulador</CardTitle>
-                    <CardDescription>
-                      Use o simulador para criar propostas e iniciar novos
-                      contratos.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="text-center py-8">
-                    <Calculator className="h-16 w-16 mx-auto mb-4 text-red-600" />
-                    <p className="text-lg mb-4">
-                      Clique no botão abaixo para acessar o simulador completo
-                    </p>
-                    <Button className="bg-red-600 hover:bg-red-700" size="lg">
-                      Abrir Simulador de Vendas
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-          {!showContractFlow &&
-            !isLoading &&
-            !error &&
             activeTab === "contracts" && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
@@ -696,42 +712,28 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                                 R$ {contract.value.toLocaleString("pt-BR")}
                               </TableCell>
                               <TableCell>
-                                {(contract.status === "active" ||
-                                  contract.status === "ativo") && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-blue-100 text-blue-800 hover:bg-blue-100"
-                                  >
-                                    Ativo
-                                  </Badge>
-                                )}
-                                {(contract.status === "completed" ||
-                                  contract.status === "concluído") && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-green-100 text-green-800 hover:bg-green-100"
-                                  >
-                                    Concluído
-                                  </Badge>
-                                )}
-                                {(contract.status === "pending" ||
-                                  contract.status === "pendente") && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-amber-100 text-amber-800 hover:bg-amber-100"
-                                  >
-                                    Pendente
-                                  </Badge>
-                                )}
-                                {(contract.status === "cancelled" ||
-                                  contract.status === "cancelado") && (
-                                  <Badge
-                                    variant="outline"
-                                    className="bg-red-100 text-red-800 hover:bg-red-100"
-                                  >
-                                    Cancelado
-                                  </Badge>
-                                )}
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    contract.status === "Ativo" ||
+                                    contract.status === "Em Análise"
+                                      ? "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                                      : contract.status === "Concluído" ||
+                                          contract.status === "Aprovado"
+                                        ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                        : contract.status === "Pendente"
+                                          ? "bg-amber-100 text-amber-800 hover:bg-amber-100"
+                                          : contract.status === "Cancelado" ||
+                                              contract.status === "Reprovado" ||
+                                              contract.status === "Em Atraso"
+                                            ? "bg-red-100 text-red-800 hover:bg-red-100"
+                                            : contract.status === "Faturado"
+                                              ? "bg-purple-100 text-purple-800 hover:bg-purple-100"
+                                              : "bg-gray-100 text-gray-800 hover:bg-gray-100"
+                                  }
+                                >
+                                  {contract.status}
+                                </Badge>
                               </TableCell>
                               <TableCell>
                                 R$ {contract.commission.toLocaleString("pt-BR")}
@@ -747,10 +749,8 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
-                                  {(contract.status === "pending" ||
-                                    contract.status === "pendente" ||
-                                    contract.status === "cancelled" ||
-                                    contract.status === "cancelado" ||
+                                  {(contract.status === "Pendente" ||
+                                    contract.status === "Cancelado" ||
                                     contract.status === "Reprovado") && (
                                     <Button
                                       variant="outline"
@@ -762,10 +762,8 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                                       <Edit className="h-4 w-4" />
                                     </Button>
                                   )}
-                                  {(contract.status === "pending" ||
-                                    contract.status === "pendente" ||
-                                    contract.status === "cancelled" ||
-                                    contract.status === "cancelado" ||
+                                  {(contract.status === "Pendente" ||
+                                    contract.status === "Cancelado" ||
                                     contract.status === "Reprovado") && (
                                     <Button
                                       variant="destructive"
@@ -1154,11 +1152,25 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex gap-2 justify-end">
-                                  <Button variant="ghost" size="sm">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      navigate(`/cliente?clientId=${client.id}`)
+                                    }
+                                    title="Acessar painel do cliente"
+                                  >
                                     <Eye className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="outline" size="sm">
-                                    <Edit className="h-4 w-4" />
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleEditClientPassword(client)
+                                    }
+                                    title="Editar senha do cliente"
+                                  >
+                                    <Key className="h-4 w-4" />
                                   </Button>
                                 </div>
                               </TableCell>
@@ -1203,6 +1215,74 @@ const RepresentativeDashboard: React.FC<RepresentativeDashboardProps> = ({
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Client Password Edit Dialog */}
+      <Dialog
+        open={isPasswordDialogOpen}
+        onOpenChange={setIsPasswordDialogOpen}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Editar Senha do Cliente</DialogTitle>
+            <DialogDescription>
+              Altere a senha de acesso do cliente{" "}
+              {selectedClientForPassword?.full_name ||
+                selectedClientForPassword?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-muted rounded-lg">
+              <h4 className="font-medium mb-2">Cliente</h4>
+              <p className="text-sm">
+                <strong>Nome:</strong>{" "}
+                {selectedClientForPassword?.full_name ||
+                  selectedClientForPassword?.name}
+              </p>
+              <p className="text-sm">
+                <strong>CPF:</strong>{" "}
+                {selectedClientForPassword?.cpf_cnpj || "Não informado"}
+              </p>
+              <p className="text-sm">
+                <strong>Email:</strong>{" "}
+                {selectedClientForPassword?.email || "Não informado"}
+              </p>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="newPassword" className="text-right">
+                Nova Senha
+              </Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="col-span-3"
+                placeholder="Digite a nova senha"
+              />
+            </div>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm font-medium text-blue-800">
+                Instruções para o cliente:
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                O cliente deve usar seu CPF e esta nova senha para fazer login
+                no sistema.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsPasswordDialogOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleUpdateClientPassword}>
+              Atualizar Senha
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
