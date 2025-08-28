@@ -222,6 +222,41 @@ export type Database = {
           },
         ]
       }
+      condicoes_parcelas: {
+        Row: {
+          created_at: string | null
+          faixa_credito_id: number
+          id: number
+          numero_parcela: number
+          updated_at: string | null
+          valor_parcela: number
+        }
+        Insert: {
+          created_at?: string | null
+          faixa_credito_id: number
+          id?: number
+          numero_parcela: number
+          updated_at?: string | null
+          valor_parcela: number
+        }
+        Update: {
+          created_at?: string | null
+          faixa_credito_id?: number
+          id?: number
+          numero_parcela?: number
+          updated_at?: string | null
+          valor_parcela?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "condicoes_parcelas_faixa_credito_id_fkey"
+            columns: ["faixa_credito_id"]
+            isOneToOne: false
+            referencedRelation: "faixas_de_credito"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contract_documents: {
         Row: {
           contract_id: number
@@ -423,6 +458,41 @@ export type Database = {
             columns: ["representative_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      custom_installments: {
+        Row: {
+          created_at: string | null
+          faixa_credito_id: number
+          id: number
+          numero_parcela: number
+          updated_at: string | null
+          valor_parcela: number
+        }
+        Insert: {
+          created_at?: string | null
+          faixa_credito_id: number
+          id?: number
+          numero_parcela: number
+          updated_at?: string | null
+          valor_parcela: number
+        }
+        Update: {
+          created_at?: string | null
+          faixa_credito_id?: number
+          id?: number
+          numero_parcela?: number
+          updated_at?: string | null
+          valor_parcela?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_installments_faixa_credito_id_fkey"
+            columns: ["faixa_credito_id"]
+            isOneToOne: false
+            referencedRelation: "faixas_de_credito"
             referencedColumns: ["id"]
           },
         ]

@@ -315,6 +315,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     valor_parcela: "",
   });
 
+  // Manage Installments Modal State (for credit ranges table)
+  const [isManageParcelasDialogOpen, setIsManageParcelasDialogOpen] =
+    useState(false);
+  const [selectedCreditRangeForParcelas, setSelectedCreditRangeForParcelas] =
+    useState(null);
+  const [editingInstallments, setEditingInstallments] = useState([]);
+  const [remainingInstallmentsValue, setRemainingInstallmentsValue] =
+    useState("");
+
   // Anticipation Conditions Management State
   const [isManageAnticipationsDialogOpen, setIsManageAnticipationsDialogOpen] =
     useState(false);
@@ -789,9 +798,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         throw rangesError;
       }
 
-      // Note: condicoes_parcelas table was removed in the latest migration
-      // Installments are now generated automatically based on total number
-      const installmentsData = [];
+      // Load custom installments from condicoes_parcelas table
+      const { data: installmentsData, error: installmentsError } =
+        await supabase
+          .from("condicoes_parcelas")
+          .select("*")
+          .order("numero_parcela", { ascending: true });
+
+      if (installmentsError) {
+        console.error("Error loading custom installments:", installmentsError);
+        // Don't throw error, just log it and continue with empty array
+      }
 
       // Load anticipation conditions
       const { data: anticipationData, error: anticipationError } =
@@ -816,7 +833,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       console.log("Commission plans loaded successfully:", {
         plans: plansData?.length || 0,
         ranges: rangesData?.length || 0,
-        installments: 0, // No longer using individual installment conditions
+        installments: installmentsData?.length || 0,
         anticipation: anticipationData?.length || 0,
       });
     } catch (error) {
@@ -2040,6 +2057,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
 
+      console.log("Creating credit range with dynamic installments:", {
+        creditRange: newCreditRange,
+        dynamicInstallments: dynamicInstallments,
+      });
+
       // Create the credit range first
       const creditRange = await commissionPlansService.createCreditRange({
         plano_id: selectedPlan.id,
@@ -2054,22 +2076,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           parseInt(newCreditRange.numero_total_parcelas) || 80,
       });
 
-      // Create individual installment records for dynamic installments
+      console.log("Credit range created:", creditRange);
+
+      // Save custom installments using the saveCustomInstallments function
       if (dynamicInstallments.length > 0) {
-        for (const installment of dynamicInstallments) {
-          try {
-            await commissionPlansService.createInstallmentCondition({
-              faixa_credito_id: creditRange.id,
-              numero_parcela: installment.numero_parcela,
-              valor_parcela: parseFloat(installment.valor_parcela),
-            });
-          } catch (installmentError) {
-            console.error(
-              `Error creating installment ${installment.numero_parcela}:`,
-              installmentError,
-            );
-            // Continue with other installments even if one fails
-          }
+        console.log("Saving custom installments for range:", creditRange.id);
+
+        // Format dynamic installments for the saveCustomInstallments function
+        const customInstallmentsForSave = dynamicInstallments.map((inst) => ({
+          numero_parcela: inst.numero_parcela,
+          valor_parcela: parseFloat(inst.valor_parcela),
+        }));
+
+        try {
+          await commissionPlansService.saveCustomInstallments(
+            creditRange.id,
+            customInstallmentsForSave,
+            parseFloat(newCreditRange.valor_parcelas_restantes),
+          );
+          console.log("Custom installments saved successfully");
+        } catch (installmentError) {
+          console.error("Error saving custom installments:", installmentError);
+          // Don't fail the entire operation, but log the error
+          alert(
+            "Faixa de crédito criada, mas houve erro ao salvar algumas parcelas personalizadas. Você pode editá-las posteriormente.",
+          );
         }
       }
 
@@ -2115,6 +2146,131 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleManageInstallments = (creditRange) => {
     setSelectedRangeForInstallments(creditRange);
     setIsManageInstallmentsDialogOpen(true);
+  };
+
+  // Handle Gerenciar Parcelas action
+  const handleManageParcelas = async (creditRange) => {
+    setSelectedCreditRangeForParcelas(creditRange);
+
+    try {
+      // Load existing custom installments for this credit range from the database
+      console.log(
+        "Loading existing custom installments for range:",
+        creditRange.id,
+      );
+      const existingCustomInstallments =
+        await commissionPlansService.getCustomInstallmentsByRange(
+          creditRange.id,
+        );
+
+      console.log("Existing custom installments:", existingCustomInstallments);
+
+      const formattedInstallments = existingCustomInstallments.map((inst) => ({
+        id: inst.id,
+        numero_parcela: inst.numero_parcela,
+        valor_parcela: inst.valor_parcela.toString(),
+      }));
+
+      console.log("Formatted installments for editing:", formattedInstallments);
+
+      setEditingInstallments(formattedInstallments);
+      setRemainingInstallmentsValue(
+        creditRange.valor_parcelas_restantes?.toString() || "",
+      );
+      setIsManageParcelasDialogOpen(true);
+    } catch (error) {
+      console.error("Error loading custom installments:", error);
+      // Continue with empty installments if there's an error
+      setEditingInstallments([]);
+      setRemainingInstallmentsValue(
+        creditRange.valor_parcelas_restantes?.toString() || "",
+      );
+      setIsManageParcelasDialogOpen(true);
+    }
+  };
+
+  // Add new installment to editing list
+  const addEditingInstallment = () => {
+    const nextNumber =
+      editingInstallments.length > 0
+        ? Math.max(...editingInstallments.map((inst) => inst.numero_parcela)) +
+          1
+        : 2; // Start from 2 since 1st installment is handled separately
+
+    const newInstallment = {
+      id: `temp-${Date.now()}`,
+      numero_parcela: nextNumber,
+      valor_parcela: "",
+    };
+
+    setEditingInstallments([...editingInstallments, newInstallment]);
+  };
+
+  // Remove installment from editing list
+  const removeEditingInstallment = (installmentId) => {
+    setEditingInstallments(
+      editingInstallments.filter((inst) => inst.id !== installmentId),
+    );
+  };
+
+  // Update installment value in editing list
+  const updateEditingInstallmentValue = (installmentId, value) => {
+    setEditingInstallments(
+      editingInstallments.map((inst) =>
+        inst.id === installmentId ? { ...inst, valor_parcela: value } : inst,
+      ),
+    );
+  };
+
+  // Save installments changes
+  const saveInstallmentsChanges = async () => {
+    if (!selectedCreditRangeForParcelas) return;
+
+    try {
+      console.log("🔄 Starting installments save process...");
+      console.log("Credit range ID:", selectedCreditRangeForParcelas.id);
+      console.log("Editing installments:", editingInstallments);
+      console.log("Remaining installments value:", remainingInstallmentsValue);
+
+      // Validate installments data before proceeding
+      const validInstallments = editingInstallments.filter(
+        (inst) => inst.valor_parcela && parseFloat(inst.valor_parcela) > 0,
+      );
+
+      console.log("Valid installments to save:", validInstallments);
+
+      // Use the atomic saveCustomInstallments function from commissionPlansService
+      await commissionPlansService.saveCustomInstallments(
+        selectedCreditRangeForParcelas.id,
+        validInstallments.map((inst) => ({
+          numero_parcela: inst.numero_parcela,
+          valor_parcela: parseFloat(inst.valor_parcela),
+        })),
+        remainingInstallmentsValue
+          ? parseFloat(remainingInstallmentsValue)
+          : undefined,
+      );
+
+      console.log("✅ Custom installments saved successfully");
+
+      // Reload commission plans data
+      await loadCommissionPlans();
+      console.log("✅ Commission plans data reloaded");
+
+      // Close dialog
+      setIsManageParcelasDialogOpen(false);
+      setSelectedCreditRangeForParcelas(null);
+      setEditingInstallments([]);
+      setRemainingInstallmentsValue("");
+
+      console.log("✅ Installments save process completed successfully");
+      alert("Parcelas atualizadas com sucesso!");
+    } catch (error) {
+      console.error("❌ Error saving installments:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      alert(`Erro ao salvar parcelas: ${errorMessage}`);
+    }
   };
 
   const handleCreateInstallment = async () => {
@@ -6785,8 +6941,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <TableHeader>
                         <TableRow>
                           <TableHead>Valor do Crédito</TableHead>
-                          <TableHead>Valor Restante</TableHead>
-                          <TableHead>Parcelas</TableHead>
+                          <TableHead>Parcelas Personalizadas</TableHead>
+                          <TableHead>Parcelas Padrão</TableHead>
                           <TableHead>Antecipações</TableHead>
                           <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
@@ -6812,13 +6968,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   }).format(range.valor_credito)}
                                 </TableCell>
                                 <TableCell>
-                                  {new Intl.NumberFormat("pt-BR", {
-                                    style: "currency",
-                                    currency: "BRL",
-                                  }).format(range.valor_restante)}
+                                  <Badge
+                                    variant="outline"
+                                    className="text-blue-600"
+                                  >
+                                    {rangeInstallments.length}
+                                  </Badge>
                                 </TableCell>
                                 <TableCell>
-                                  {rangeInstallments.length}
+                                  {range.numero_total_parcelas -
+                                    rangeInstallments.length}
                                 </TableCell>
                                 <TableCell>
                                   {rangeAnticipations.length}
@@ -6829,7 +6988,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       variant="ghost"
                                       size="sm"
                                       onClick={() =>
-                                        handleManageInstallments(range)
+                                        handleManageParcelas(range)
                                       }
                                       title="Gerenciar Parcelas"
                                     >
@@ -7781,6 +7940,229 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 disabled={!collaboratorAdminPassword.trim()}
               >
                 Excluir Colaborador
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Manage Parcelas Dialog */}
+        <Dialog
+          open={isManageParcelasDialogOpen}
+          onOpenChange={setIsManageParcelasDialogOpen}
+        >
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Gerenciar Parcelas</DialogTitle>
+              <DialogDescription>
+                Configure os valores das parcelas personalizadas e o valor das
+                parcelas restantes para a faixa de crédito de{" "}
+                {selectedCreditRangeForParcelas &&
+                  new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(selectedCreditRangeForParcelas.valor_credito)}
+                .
+              </DialogDescription>
+            </DialogHeader>
+            {selectedCreditRangeForParcelas && (
+              <div className="space-y-6">
+                {/* Credit Range Info */}
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold mb-2">
+                    Faixa de Crédito:{" "}
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(selectedCreditRangeForParcelas.valor_credito)}
+                  </h3>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">1ª Parcela</p>
+                      <p className="font-semibold">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(
+                          selectedCreditRangeForParcelas.valor_primeira_parcela,
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Total de Parcelas</p>
+                      <p className="font-semibold">
+                        {selectedCreditRangeForParcelas.numero_total_parcelas}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">
+                        Parcelas Personalizadas
+                      </p>
+                      <p className="font-semibold">
+                        {editingInstallments.length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customized Installments */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold">Parcelas Personalizadas</h4>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={addEditingInstallment}
+                    >
+                      <PlusCircle className="h-4 w-4 mr-2" />
+                      Adicionar Parcela
+                    </Button>
+                  </div>
+
+                  {editingInstallments.length > 0 ? (
+                    <div className="space-y-3">
+                      {editingInstallments.map((installment) => (
+                        <div
+                          key={installment.id}
+                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
+                        >
+                          <Label className="text-sm font-medium min-w-[100px]">
+                            {installment.numero_parcela}ª Parcela:
+                          </Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={installment.valor_parcela}
+                            onChange={(e) =>
+                              updateEditingInstallmentValue(
+                                installment.id,
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Ex: 250.00"
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              removeEditingInstallment(installment.id)
+                            }
+                            className="text-red-600 hover:text-red-700 border-red-200 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Hash className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>Nenhuma parcela personalizada configurada</p>
+                      <p className="text-sm">
+                        Clique em "Adicionar Parcela" para começar
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Remaining Installments Value */}
+                <div>
+                  <h4 className="font-semibold mb-4">
+                    Valor das Parcelas Restantes
+                  </h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="remaining-value">
+                      Valor aplicado às parcelas não personalizadas
+                    </Label>
+                    <Input
+                      id="remaining-value"
+                      type="number"
+                      step="0.01"
+                      value={remainingInstallmentsValue}
+                      onChange={(e) =>
+                        setRemainingInstallmentsValue(e.target.value)
+                      }
+                      placeholder="Ex: 250.00"
+                      className="max-w-xs"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Este valor será aplicado às{" "}
+                      {selectedCreditRangeForParcelas.numero_total_parcelas -
+                        1 -
+                        editingInstallments.length}{" "}
+                      parcelas restantes (excluindo a 1ª parcela e as{" "}
+                      {editingInstallments.length} parcela(s) personalizada(s))
+                    </p>
+                  </div>
+                </div>
+
+                {/* Summary */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">
+                    Resumo das Parcelas
+                  </h4>
+                  <div className="space-y-1 text-sm text-blue-800">
+                    <p>
+                      • 1ª Parcela:{" "}
+                      {new Intl.NumberFormat("pt-BR", {
+                        style: "currency",
+                        currency: "BRL",
+                      }).format(
+                        selectedCreditRangeForParcelas.valor_primeira_parcela,
+                      )}
+                    </p>
+                    {editingInstallments.map(
+                      (installment) =>
+                        installment.valor_parcela && (
+                          <p key={installment.id}>
+                            • {installment.numero_parcela}ª Parcela:{" "}
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(
+                              parseFloat(installment.valor_parcela) || 0,
+                            )}
+                          </p>
+                        ),
+                    )}
+                    {remainingInstallmentsValue && (
+                      <p>
+                        • Demais{" "}
+                        {selectedCreditRangeForParcelas.numero_total_parcelas -
+                          1 -
+                          editingInstallments.length}{" "}
+                        parcelas:{" "}
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(
+                          parseFloat(remainingInstallmentsValue) || 0,
+                        )}{" "}
+                        cada
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsManageParcelasDialogOpen(false);
+                  setSelectedCreditRangeForParcelas(null);
+                  setEditingInstallments([]);
+                  setRemainingInstallmentsValue("");
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={saveInstallmentsChanges}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Salvar Alterações
               </Button>
             </DialogFooter>
           </DialogContent>

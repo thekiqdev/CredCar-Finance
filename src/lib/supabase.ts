@@ -978,6 +978,132 @@ export const commissionPlansService = {
 
     return installments;
   },
+
+  // Custom Installments Management (CondicoesParcelas)
+  async getCustomInstallmentsByRange(rangeId: number) {
+    try {
+      const { data, error } = await supabase
+        .from("condicoes_parcelas")
+        .select("*")
+        .eq("faixa_credito_id", rangeId)
+        .order("numero_parcela", { ascending: true });
+
+      if (error) {
+        console.error("Error fetching custom installments:", error);
+        throw error;
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error("Error in getCustomInstallmentsByRange:", error);
+      throw error;
+    }
+  },
+
+  async saveCustomInstallments(
+    rangeId: number,
+    customInstallments: Array<{
+      numero_parcela: number;
+      valor_parcela: number;
+    }>,
+    remainingInstallmentsValue?: number,
+  ) {
+    try {
+      console.log("Starting saveCustomInstallments...");
+      console.log("Range ID:", rangeId);
+      console.log("Custom installments:", customInstallments);
+      console.log("Remaining installments value:", remainingInstallmentsValue);
+
+      // Step 1: Delete existing custom installments for this range
+      console.log("Deleting existing custom installments...");
+      const { error: deleteError } = await supabase
+        .from("condicoes_parcelas")
+        .delete()
+        .eq("faixa_credito_id", rangeId);
+
+      if (deleteError) {
+        console.error("Error deleting existing installments:", deleteError);
+        throw deleteError;
+      }
+      console.log("Existing installments deleted successfully");
+
+      // Step 2: Insert new custom installments
+      if (customInstallments && customInstallments.length > 0) {
+        const installmentsToInsert = customInstallments
+          .filter((inst) => inst.valor_parcela && inst.valor_parcela > 0)
+          .map((inst) => ({
+            faixa_credito_id: rangeId,
+            numero_parcela: inst.numero_parcela,
+            valor_parcela: inst.valor_parcela,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }));
+
+        console.log("Installments to insert:", installmentsToInsert);
+
+        if (installmentsToInsert.length > 0) {
+          const { error: insertError } = await supabase
+            .from("condicoes_parcelas")
+            .insert(installmentsToInsert);
+
+          if (insertError) {
+            console.error("Error inserting custom installments:", insertError);
+            throw insertError;
+          }
+          console.log("Custom installments inserted successfully");
+        }
+      }
+
+      // Step 3: Update remaining installments value in credit range if provided
+      if (
+        remainingInstallmentsValue !== undefined &&
+        remainingInstallmentsValue !== null
+      ) {
+        console.log("Updating remaining installments value in credit range...");
+        const { error: updateError } = await supabase
+          .from("faixas_de_credito")
+          .update({
+            valor_parcelas_restantes: remainingInstallmentsValue,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", rangeId);
+
+        if (updateError) {
+          console.error(
+            "Error updating remaining installments value:",
+            updateError,
+          );
+          throw updateError;
+        }
+        console.log("Remaining installments value updated successfully");
+      }
+
+      console.log("saveCustomInstallments completed successfully");
+      return true;
+    } catch (error) {
+      console.error("Error in saveCustomInstallments:", error);
+      throw error;
+    }
+  },
+
+  async deleteCustomInstallmentsByRange(rangeId: number) {
+    try {
+      const { error } = await supabase
+        .from("condicoes_parcelas")
+        .delete()
+        .eq("faixa_credito_id", rangeId);
+
+      if (error) {
+        console.error("Error deleting custom installments:", error);
+        throw error;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error in deleteCustomInstallmentsByRange:", error);
+      throw error;
+    }
+  },
 };
 
 // Contract service
@@ -2609,7 +2735,7 @@ export const electronicSignatureService = {
       const signatureField = await this.getSignatureField(signatureId);
 
       if (!signatureField) {
-        throw new Error("Campo de assinatura não encontrado");
+        throw new Error("Signature field not found");
       }
 
       console.log(`📋 Found signature field:`, {
@@ -3159,7 +3285,7 @@ export const clientService = {
         .select(
           `
           *,
-          profiles!representative_id (
+          profiles!inner (
             id,
             full_name,
             email,
