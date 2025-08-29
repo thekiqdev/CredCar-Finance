@@ -283,6 +283,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nome: "",
     descricao: "",
     ativo: true,
+    visibility: "publico",
   });
   const [editingPlan, setEditingPlan] = useState(null);
 
@@ -1930,11 +1931,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         nome: newPlan.nome,
         descricao: newPlan.descricao,
         ativo: newPlan.ativo,
+        visibility: newPlan.visibility,
       });
 
       await loadCommissionPlans();
       setIsNewPlanDialogOpen(false);
-      setNewPlan({ nome: "", descricao: "", ativo: true });
+      setNewPlan({
+        nome: "",
+        descricao: "",
+        ativo: true,
+        visibility: "publico",
+      });
       alert("Plano criado com sucesso!");
     } catch (error) {
       console.error("Error creating plan:", error);
@@ -1958,6 +1965,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         nome: editingPlan.nome,
         descricao: editingPlan.descricao,
         ativo: editingPlan.ativo,
+        visibility: editingPlan.visibility,
       });
 
       await loadCommissionPlans();
@@ -4776,6 +4784,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   placeholder="Ex: Compra Programada 80X"
                                 />
                               </div>
+                              <div>
+                                <Label htmlFor="plan-visibility">
+                                  Visibilidade
+                                </Label>
+                                <Select
+                                  value={newPlan.visibility || "publico"}
+                                  onValueChange={(value) =>
+                                    setNewPlan({
+                                      ...newPlan,
+                                      visibility: value,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="publico">
+                                      Público (visível para todos)
+                                    </SelectItem>
+                                    <SelectItem value="privado">
+                                      Privado (apenas administradores)
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
                               <div className="flex items-center space-x-2">
                                 <input
                                   type="checkbox"
@@ -6857,6 +6892,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     }
                     placeholder="Ex: Compra Programada 80X"
                   />
+                </div>
+                <div>
+                  <Label htmlFor="edit-plan-visibility">Visibilidade</Label>
+                  <Select
+                    value={editingPlan.visibility || "publico"}
+                    onValueChange={(value) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        visibility: value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="publico">
+                        Público (visível para todos)
+                      </SelectItem>
+                      <SelectItem value="privado">
+                        Privado (apenas administradores)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex items-center space-x-2">
                   <input

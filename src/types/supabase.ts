@@ -737,6 +737,7 @@ export type Database = {
           descricao: string | null
           id: number
           nome: string
+          visibility: string | null
         }
         Insert: {
           ativo?: boolean | null
@@ -744,6 +745,7 @@ export type Database = {
           descricao?: string | null
           id?: number
           nome: string
+          visibility?: string | null
         }
         Update: {
           ativo?: boolean | null
@@ -751,6 +753,7 @@ export type Database = {
           descricao?: string | null
           id?: number
           nome?: string
+          visibility?: string | null
         }
         Relationships: []
       }

@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, ArrowLeft, Percent, CreditCard } from "lucide-react";
-import { commissionPlansService } from "@/lib/supabase";
+import { commissionPlansService, authService } from "@/lib/supabase";
 
 interface CommissionPlan {
   id: number;
@@ -31,6 +31,12 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
   const [selectedPlan, setSelectedPlan] = useState<CommissionPlan | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Get current user to check role
+  const currentUser = authService.getCurrentUser();
+  const isAdmin =
+    currentUser?.role === "Administrador" ||
+    currentUser?.email === "admin@credicar.com";
+
   useEffect(() => {
     fetchCommissionPlans();
   }, []);
@@ -38,9 +44,17 @@ const CommissionTableSelection: React.FC<CommissionTableSelectionProps> = ({
   const fetchCommissionPlans = async () => {
     try {
       const data = await commissionPlansService.getAll();
-      // Filter only active plans
-      const activePlans = data.filter((plan) => plan.ativo !== false);
-      setPlans(activePlans);
+      // Filter active plans and apply visibility rules
+      let filteredPlans = data.filter((plan) => plan.ativo !== false);
+
+      // If user is not admin, only show public plans
+      if (!isAdmin) {
+        filteredPlans = filteredPlans.filter(
+          (plan) => plan.visibility !== "privado",
+        );
+      }
+
+      setPlans(filteredPlans);
     } catch (error) {
       console.error("Error fetching commission plans:", error);
     } finally {

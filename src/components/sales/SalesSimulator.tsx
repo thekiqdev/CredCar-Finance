@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Calculator, Check, ChevronRight } from "lucide-react";
 import ContractCreationFlow from "./ContractCreationFlow";
+import { authService } from "@/lib/supabase";
 
 interface PaymentPlan {
   firstPayment: number;
@@ -51,6 +52,12 @@ const SalesSimulator: React.FC<SalesSimulatorProps> = ({ onComplete }) => {
   const [showResults, setShowResults] = useState<boolean>(false);
   const [selectedPlan, setSelectedPlan] = useState<PaymentPlan | null>(null);
   const [showContractFlow, setShowContractFlow] = useState<boolean>(false);
+
+  // Get current user to check role
+  const currentUser = authService.getCurrentUser();
+  const isAdmin =
+    currentUser?.role === "Administrador" ||
+    currentUser?.email === "admin@credicar.com";
 
   // Mock commission tables data
   const commissionTables = {
