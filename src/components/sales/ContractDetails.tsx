@@ -1620,7 +1620,7 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
               </div>
             )}
 
-            {/* Contract Summary Cards */}
+            {/* Contract Summary Cards - Client Focus */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -1633,13 +1633,35 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                   <div className="text-2xl font-bold text-green-600">
                     {formatCurrency(contract.total_value)}
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Valor do contrato
+                  </p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Valor Restante
+                    Valor Pago
+                  </CardTitle>
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(
+                      contract.total_value - contract.remaining_value,
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Já quitado pelo cliente
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    Saldo Devedor
                   </CardTitle>
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
@@ -1647,6 +1669,9 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                   <div className="text-2xl font-bold text-orange-600">
                     {formatCurrency(contract.remaining_value)}
                   </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Pendente de pagamento
+                  </p>
                 </CardContent>
               </Card>
 
@@ -1667,24 +1692,7 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                         contract.total_installments) *
                       100
                     ).toFixed(0)}
-                    % pago
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Comissão
-                  </CardTitle>
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-purple-600">
-                    {formatCurrency(commissionValue)}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {contract.commission_table.commission_percentage}% do valor
+                    % pagas
                   </p>
                 </CardContent>
               </Card>
@@ -1834,6 +1842,28 @@ const ContractDetails: React.FC<ContractDetailsProps> = ({
                       </p>
                     </div>
                   )}
+
+                  {/* Commission Information */}
+                  <div className="border-t pt-4 mt-4">
+                    <div className="bg-purple-50 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <DollarSign className="h-4 w-4 text-purple-600" />
+                        <Label className="text-sm font-medium text-purple-800">
+                          Comissão a Receber
+                        </Label>
+                      </div>
+                      <div className="text-xl font-bold text-purple-600">
+                        {formatCurrency(commissionValue)}
+                      </div>
+                      <p className="text-xs text-purple-700 mt-1">
+                        {contract.commission_table.commission_percentage}% do
+                        valor do contrato
+                      </p>
+                      <p className="text-xs text-purple-600 mt-1">
+                        Tabela: {contract.commission_table.name}
+                      </p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </div>
