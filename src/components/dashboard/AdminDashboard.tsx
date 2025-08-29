@@ -7031,7 +7031,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     variant="outline"
                                     className="text-blue-600"
                                   >
-                                    {rangeInstallments.length}
+                                    {1 + rangeInstallments.length}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
