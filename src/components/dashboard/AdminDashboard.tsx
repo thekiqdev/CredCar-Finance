@@ -8057,7 +8057,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         Parcelas Personalizadas
                       </p>
                       <p className="font-semibold">
-                        {editingInstallments.length}
+                        {1 + editingInstallments.length}
                       </p>
                     </div>
                   </div>

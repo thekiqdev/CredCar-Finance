@@ -17,6 +17,15 @@ import {
 } from "lucide-react";
 import { commissionPlansService } from "@/lib/supabase";
 
+interface CustomInstallment {
+  id: number;
+  faixa_credito_id: number;
+  numero_parcela: number;
+  valor_parcela: number;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 interface CreditRange {
   id: number;
   plano_id: number;
@@ -24,6 +33,7 @@ interface CreditRange {
   valor_primeira_parcela: number;
   valor_parcelas_restantes: number;
   numero_total_parcelas: number;
+  customInstallments?: CustomInstallment[];
 }
 
 interface CommissionPlan {
@@ -81,6 +91,121 @@ const CreditValueSelection: React.FC<CreditValueSelectionProps> = ({
       style: "currency",
       currency: "BRL",
     }).format(value);
+  };
+
+  const renderInstallments = (creditRange: CreditRange) => {
+    const customInstallments = creditRange.customInstallments || [];
+    const installmentElements = [];
+
+    // If there are custom installments, render them individually
+    if (customInstallments.length > 0) {
+      // Sort custom installments by installment number
+      const sortedCustom = [...customInstallments].sort(
+        (a, b) => a.numero_parcela - b.numero_parcela,
+      );
+
+      // Render each custom installment
+      sortedCustom.forEach((installment) => {
+        installmentElements.push(
+          <div
+            key={`custom-${installment.id}`}
+            className="flex items-center justify-between p-3 bg-blue-50 rounded-lg"
+          >
+            <div className="flex items-center">
+              <Calculator className="w-4 h-4 text-blue-600 mr-2" />
+              <span className="text-sm font-medium text-gray-700">
+                {installment.numero_parcela}ª Parcela
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-blue-600">
+              {formatCurrency(installment.valor_parcela)}
+            </span>
+          </div>,
+        );
+      });
+
+      // Calculate remaining installments
+      const customInstallmentCount = customInstallments.length;
+      const remainingInstallments =
+        creditRange.numero_total_parcelas - customInstallmentCount;
+
+      if (remainingInstallments > 0) {
+        installmentElements.push(
+          <div
+            key="remaining"
+            className="flex items-center justify-between p-3 bg-purple-50 rounded-lg"
+          >
+            <div className="flex items-center">
+              <Calculator className="w-4 h-4 text-purple-600 mr-2" />
+              <span className="text-sm font-medium text-gray-700">
+                Demais Parcelas ({remainingInstallments}x)
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-purple-600">
+              {formatCurrency(creditRange.valor_parcelas_restantes)}
+            </span>
+          </div>,
+        );
+      }
+    } else {
+      // Default behavior: show first installment and remaining installments
+      installmentElements.push(
+        <div
+          key="first"
+          className="flex items-center justify-between p-3 bg-blue-50 rounded-lg"
+        >
+          <div className="flex items-center">
+            <Calculator className="w-4 h-4 text-blue-600 mr-2" />
+            <span className="text-sm font-medium text-gray-700">
+              1ª Parcela
+            </span>
+          </div>
+          <span className="text-sm font-semibold text-blue-600">
+            {formatCurrency(creditRange.valor_primeira_parcela)}
+          </span>
+        </div>,
+      );
+
+      const remainingInstallments = creditRange.numero_total_parcelas - 1;
+      if (remainingInstallments > 0) {
+        installmentElements.push(
+          <div
+            key="remaining"
+            className="flex items-center justify-between p-3 bg-purple-50 rounded-lg"
+          >
+            <div className="flex items-center">
+              <Calculator className="w-4 h-4 text-purple-600 mr-2" />
+              <span className="text-sm font-medium text-gray-700">
+                Demais Parcelas ({remainingInstallments}x)
+              </span>
+            </div>
+            <span className="text-sm font-semibold text-purple-600">
+              {formatCurrency(creditRange.valor_parcelas_restantes)}
+            </span>
+          </div>,
+        );
+      }
+    }
+
+    // Always show total installments
+    installmentElements.push(
+      <div
+        key="total"
+        className="flex items-center justify-between p-3 bg-orange-50 rounded-lg"
+      >
+        <div className="flex items-center">
+          <Calendar className="w-4 h-4 text-orange-600 mr-2" />
+          <span className="text-sm font-medium text-gray-700">
+            Total de Parcelas
+          </span>
+        </div>
+        <span className="text-sm font-semibold text-orange-600">
+          {creditRange.numero_total_parcelas}x
+        </span>
+      </div>,
+    );
+
+    return installmentElements;
   };
 
   if (loading) {
@@ -143,41 +268,7 @@ const CreditValueSelection: React.FC<CreditValueSelectionProps> = ({
               <CardContent>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 gap-3">
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <Calculator className="w-4 h-4 text-blue-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-700">
-                          1ª Parcela
-                        </span>
-                      </div>
-                      <span className="text-sm font-semibold text-blue-600">
-                        {formatCurrency(creditRange.valor_primeira_parcela)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <Calculator className="w-4 h-4 text-purple-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-700">
-                          Demais Parcelas
-                        </span>
-                      </div>
-                      <span className="text-sm font-semibold text-purple-600">
-                        {formatCurrency(creditRange.valor_parcelas_restantes)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <Calendar className="w-4 h-4 text-orange-600 mr-2" />
-                        <span className="text-sm font-medium text-gray-700">
-                          Total de Parcelas
-                        </span>
-                      </div>
-                      <span className="text-sm font-semibold text-orange-600">
-                        {creditRange.numero_total_parcelas}x
-                      </span>
-                    </div>
+                    {renderInstallments(creditRange)}
                   </div>
 
                   <div className="pt-2 border-t">

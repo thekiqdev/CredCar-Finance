@@ -678,6 +678,7 @@ export const commissionPlansService = {
       // Get anticipation conditions for all ranges
       const rangeIds = (creditRanges || []).map((r) => r.id);
       let anticipationConditions = [];
+      let customInstallments = [];
 
       if (rangeIds.length > 0) {
         // Get anticipation conditions
@@ -697,11 +698,49 @@ export const commissionPlansService = {
         }
 
         anticipationConditions = anticipations || [];
+
+        // Get custom installments for all ranges
+        const { data: installments, error: installmentsError } = await supabase
+          .from("condicoes_parcelas")
+          .select("*")
+          .in("faixa_credito_id", rangeIds)
+          .order("faixa_credito_id", { ascending: true })
+          .order("numero_parcela", { ascending: true });
+
+        if (installmentsError) {
+          console.error(
+            "Error fetching custom installments:",
+            installmentsError,
+          );
+          throw installmentsError;
+        }
+
+        customInstallments = installments || [];
       }
+
+      // Group custom installments by credit range ID
+      const installmentsByRange = customInstallments.reduce(
+        (acc, installment) => {
+          if (!acc[installment.faixa_credito_id]) {
+            acc[installment.faixa_credito_id] = [];
+          }
+          acc[installment.faixa_credito_id].push(installment);
+          return acc;
+        },
+        {} as Record<number, any[]>,
+      );
+
+      // Add custom installments to each credit range
+      const creditRangesWithInstallments = (creditRanges || []).map(
+        (range) => ({
+          ...range,
+          customInstallments: installmentsByRange[range.id] || [],
+        }),
+      );
 
       return {
         plan,
-        creditRanges: creditRanges || [],
+        creditRanges: creditRangesWithInstallments,
         anticipationConditions,
       };
     } catch (error) {
